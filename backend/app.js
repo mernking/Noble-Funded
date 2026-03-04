@@ -1,30 +1,20 @@
-'use strict'
+"use strict";
+import "dotenv/config";
 
-const path = require('node:path')
-const AutoLoad = require('@fastify/autoload')
+const options = {};
 
-// Pass --options via CLI arguments in command to enable these options.
-const options = {}
+export default async function app(fastify, opts) {
+  // Register plugins
+  fastify.register(import("@fastify/autoload"), {
+    dir: new URL("./plugins", import.meta.url).pathname,
+    options: Object.assign({}, opts),
+  });
 
-module.exports = async function (fastify, opts) {
-  // Place here your custom code!
-
-  // Do not touch the following lines
-
-  // This loads all plugins defined in plugins
-  // those should be support plugins that are reused
-  // through your application
-  fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'plugins'),
-    options: Object.assign({}, opts)
-  })
-
-  // This loads all plugins defined in routes
-  // define your routes in one of these
-  fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'routes'),
-    options: Object.assign({}, opts)
-  })
+  // Register routes
+  fastify.register(import("@fastify/autoload"), {
+    dir: new URL("./routes", import.meta.url).pathname,
+    options: Object.assign({}, opts),
+  });
 }
 
-module.exports.options = options
+export { options };
