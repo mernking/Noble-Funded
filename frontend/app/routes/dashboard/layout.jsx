@@ -14,6 +14,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { auth, getUser } from "@/lib/api.js";
 
 const NAV_ITEMS = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard },
@@ -29,17 +30,16 @@ export default function DashboardLayout() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem("user");
-    if (!raw) {
+    const storedUser = getUser();
+    if (!storedUser || !auth.isAuthenticated()) {
       navigate("/login");
       return;
     }
-    setUser(JSON.parse(raw));
+    setUser(storedUser);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await auth.logout();
     navigate("/login");
   };
 

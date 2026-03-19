@@ -57,22 +57,6 @@ export default fp(
         },
       });
     });
-
-    // Helper to throw standard errors cleanly from route handlers
-    fastify.decorate("fail", function (reply, statusCode, code, message) {
-      return reply.code(statusCode).send({
-        success: false,
-        error: {
-          code,
-          message: message || ERROR_MESSAGES[code] || "An error occurred.",
-        },
-      });
-    });
-
-    // Helper to send success responses
-    fastify.decorate("ok", function (reply, data, statusCode = 200) {
-      return reply.code(statusCode).send({ success: true, data });
-    });
   },
   { name: "errorHandler" },
 );

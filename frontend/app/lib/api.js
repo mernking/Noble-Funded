@@ -1,9 +1,39 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+// Token management helpers
+const TOKEN_KEY = "noble_token";
+const USER_KEY = "noble_user";
+
+export const getToken = () => {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+};
+
+export const setToken = (token) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(TOKEN_KEY, token);
+};
+
+export const getUser = () => {
+  if (typeof window === "undefined") return null;
+  const user = localStorage.getItem(USER_KEY);
+  return user ? JSON.parse(user) : null;
+};
+
+export const setUser = (user) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+};
+
+export const clearAuth = () => {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+};
 
 export const api = {
   async request(endpoint, options = {}) {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const token = getToken();
     const headers = { ...options.headers };
 
     if (options.body && !headers["Content-Type"]) {
@@ -17,23 +47,28 @@ export const api = {
     const config = { ...options, headers };
 
     try {
-      const response = await fetch(`${BASE_URL}/api/${endpoint}`, config);
+      const response = await fetch(`${BASE_URL}/api/dev/${endpoint}`, config);
 
-      if (response.status === 401 && !endpoint.includes("login")) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        location.href = "/login";
+      // Handle 401 - token expired or invalid
+      if (response.status === 401 && !endpoint.includes("login") && !endpoint.includes("register")) {
+        clearAuth();
+        // Redirect to login if not already there
+        if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
+          window.location.href = "/login?session=expired";
+        }
+        throw new Error("Session expired. Please log in again.");
       }
 
+      // Handle new token in headers
       const newToken = response.headers.get("x-auth-token");
-      if (newToken && typeof window !== "undefined") {
-        localStorage.setItem("token", newToken);
+      if (newToken) {
+        setToken(newToken);
       }
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data?.error?.message || "Something went wrong");
+        throw new Error(data?.error?.message || data?.message || "Something went wrong");
       }
 
       return data;
@@ -64,3 +99,98 @@ export const api = {
     return this.request(endpoint, { method: "DELETE" });
   },
 };
+
+// Auth-specific methods
+export const auth = {
+  // Register new user
+  async register({ fullName, email, password, phone }) {
+    const response = await api.post("auth/register", { fullName, email, password, phone });
+    if (response.data?.token && response.data?.user) {
+      setToken(response.data.token);
+      setUser(response.data.user);
+    }
+    return response;
+  },
+
+  // Login with email/password
+  async login({ email, password }) {
+    const response = await api.post("auth/login", { email, password });
+    if (response.data?.token && response.data?.user) {
+      setToken(response.data.token);
+      setUser(response.data.user);
+    }
+    return response;
+  },
+
+  // Google OAuth - redirect to backend
+  async loginWithGoogle() {
+    // Redirect to backend OAuth endpoint
+    window.location.href = `${BASE_URL}/api/dev/auth/google`;
+  },
+
+  // Handle OAuth callback - extract token from URL
+  handleCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const userId = params.get("userId");
+    
+    if (token && userId) {
+      setToken(token);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return { token, userId };
+    }
+    return null;
+  },
+
+  // Get current user
+  async getCurrentUser() {
+    const response = await api.get("auth/me");
+    if (response.data) {
+      setUser(response.data);
+    }
+    return response;
+  },
+
+  // Logout
+  async logout() {
+    try {
+      await api.post("auth/logout");
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      clearAuth();
+    }
+  },
+
+  // Check if user is authenticated
+  isAuthenticated() {
+    return !!getToken();
+  },
+
+  // Get current user from local storage
+  getUser() {
+    return getUser();
+  },
+
+  // Refresh token
+  async refreshToken() {
+    const response = await api.post("auth/refresh-token");
+    if (response.data?.token) {
+      setToken(response.data.token);
+    }
+    return response;
+  },
+
+  // Forgot password
+  async forgotPassword({ email }) {
+    return api.post("auth/forgot-password", { email });
+  },
+
+  // Reset password with token
+  async resetPassword({ token, password }) {
+    return api.post(`auth/reset-password/${token}`, { password });
+  },
+};
+
+export default api;

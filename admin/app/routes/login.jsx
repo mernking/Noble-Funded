@@ -1,15 +1,28 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast, ToastContainer } from "react-toastify";
 import { Lock, Mail, TrendingUp, Eye, EyeOff, Shield } from "lucide-react";
-import { api } from "@/lib/api.js";
+import { auth } from "@/lib/api.js";
 import "react-toastify/dist/ReactToastify.css";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Check for session expiry message
+  useEffect(() => {
+    const error = searchParams.get("error");
+    const expired = searchParams.get("session");
+    
+    if (expired === "expired") {
+      toast.warning("Your session has expired. Please log in again.");
+    } else if (error) {
+      toast.error(decodeURIComponent(error));
+    }
+  }, [searchParams]);
 
   const ALLOWED_ROLES = [
     "super_admin",
@@ -27,16 +40,14 @@ export default function AdminLogin() {
     }
     setLoading(true);
     try {
-      const data = await api.post("auth/login", form);
+      const data = await auth.login({ email: form.email, password: form.password });
       const user = data.data.user;
+      
       if (!ALLOWED_ROLES.includes(user.role)) {
-        toast.error(
-          "Access denied. This portal is for admin team members only.",
-        );
+        toast.error("Access denied. This portal is for admin team members only.");
         return;
       }
-      localStorage.setItem("adminToken", data.data.token);
-      localStorage.setItem("adminUser", JSON.stringify(user));
+
       toast.success("Welcome to Noble Funded Admin.");
 
       // Route based on role

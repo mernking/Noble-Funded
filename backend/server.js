@@ -1,8 +1,10 @@
+import "module-alias/register";
 import "dotenv/config";
 import Fastify from "fastify";
 import AutoLoad from "@fastify/autoload";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
+import supabasePlugin from "./plugins/supabase.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,9 +18,13 @@ const fastify = Fastify({
   },
 });
 
-// Load plugins
+// Register Supabase first (before other plugins that depend on it)
+await fastify.register(supabasePlugin);
+
+// Load other plugins via AutoLoad
 fastify.register(AutoLoad, {
   dir: join(__dirname, "plugins"),
+  ignorePattern: /supabase\.js$/,
   forceESM: true,
 });
 

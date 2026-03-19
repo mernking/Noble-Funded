@@ -9,7 +9,7 @@ import {
   ChevronRight,
   ArrowUpRight,
 } from "lucide-react";
-import { api } from "@/lib/api.js";
+import { api, getUser } from "@/lib/api.js";
 
 const StatCard = ({ label, value, sub, icon: Icon, color, iconBg }) => (
   <div
@@ -74,8 +74,8 @@ export default function Overview() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem("user");
-    if (raw) setUser(JSON.parse(raw));
+    const storedUser = getUser();
+    if (storedUser) setUser(storedUser);
 
     api
       .get("challenges")

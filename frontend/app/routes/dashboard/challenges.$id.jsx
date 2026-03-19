@@ -119,7 +119,7 @@ export default function ChallengeDetail() {
           <div style={{ background: '#111b2e', borderRadius: '8px', padding: '0.875rem', marginTop: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
               <span style={{ color: '#7a8fa6', fontSize: '0.8rem' }}>Duration</span>
-              <span style={{ color: '#f0f4ff', fontSize: '0.8rem', fontWeight: 600' }}>
+              <span style={{ color: '#f0f4ff', fontSize: '0.8rem', fontWeight: 600 }}>
                 {challenge.durationDays} day{challenge.durationDays !== 1 ? 's' : ''}
               </span>
             </div>

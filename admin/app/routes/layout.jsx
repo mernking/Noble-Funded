@@ -18,6 +18,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { auth, getUser } from "@/lib/api.js";
 
 const SIDEBAR_BY_ROLE = {
   super_admin: [
@@ -49,17 +50,16 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem("adminUser");
-    if (!raw) {
+    const storedUser = getUser();
+    if (!storedUser || !auth.isAuthenticated()) {
       navigate("/login");
       return;
     }
-    setUser(JSON.parse(raw));
+    setUser(storedUser);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminUser");
+  const handleLogout = async () => {
+    await auth.logout();
     navigate("/login");
   };
 
