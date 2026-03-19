@@ -243,7 +243,7 @@ export default async function adminRoutes(fastify) {
       });
 
       // Send welcome email with credentials
-      const emailService = await import("@/services/email.service.js");
+      const emailService = await import("../../../services/email.service.js");
       emailService
         .sendAdminInviteEmail(email, fullName, password, role)
         .catch((err) => fastify.log.error("Failed to send invite email:", err));
