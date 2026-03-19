@@ -56,7 +56,7 @@ export default async function adminRoutes(fastify) {
     },
   );
 
-  // GET /api/admin/users
+  // GET /api/admin/users - Only show traders
   fastify.get(
     "/users",
     {
@@ -64,18 +64,29 @@ export default async function adminRoutes(fastify) {
     },
     async (request, reply) => {
       const db = fastify.db;
-      const { page = 1, limit = 20 } = request.query;
+      const { page = 1, limit = 20, search = "", status = "" } = request.query;
+
+      // Build conditions - always filter by role = trader
+      let conditions = [eq(users.role, "trader")];
+
+      // Add status filter if provided
+      if (status) {
+        conditions.push(eq(users.status, status));
+      }
+
       const list = await db
         .select({
           id: users.id,
           email: users.email,
           fullName: users.fullName,
+          phone: users.phone,
           role: users.role,
           status: users.status,
           kycStatus: users.kycStatus,
           createdAt: users.createdAt,
         })
         .from(users)
+        .where(and(...conditions))
         .orderBy(desc(users.createdAt))
         .limit(Number(limit))
         .offset((Number(page) - 1) * Number(limit));
@@ -159,78 +170,164 @@ export default async function adminRoutes(fastify) {
     },
   );
 
-  // POST /api/admin/team/add
+  // POST /api/admin/team/add - Create new admin team member
   fastify.post(
     "/team/add",
     { preHandler: [fastify.requireRole("super_admin")] },
     async (request, reply) => {
-      const { userId, role, permissions } = request.body || {};
-      if (!userId || !role) {
+      const { fullName, email, role, password } = request.body || {};
+
+      if (!fullName || !email || !role || !password) {
         return fastify.fail(
           reply,
           422,
           "VALIDATION_ERROR",
-          "User ID and role are required.",
+          "Full name, email, role, and password are required.",
+        );
+      }
+
+      // Validate role
+      const validRoles = ["compliance", "support", "marketing", "developer"];
+      if (!validRoles.includes(role)) {
+        return fastify.fail(
+          reply,
+          422,
+          "VALIDATION_ERROR",
+          "Invalid role. Must be compliance, support, marketing, or developer.",
         );
       }
 
       const db = fastify.db;
-      const [member] = await db
-        .insert(teamMembers)
+
+      // Check if email already exists
+      const [existing] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()));
+
+      if (existing) {
+        return fastify.fail(
+          reply,
+          409,
+          "DUPLICATE_EMAIL",
+          "A user with this email already exists.",
+        );
+      }
+
+      // Hash password
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      // Create new user
+      const [newUser] = await db
+        .insert(users)
         .values({
-          userId,
+          fullName,
+          email: email.toLowerCase(),
+          passwordHash,
           role,
-          permissions: permissions || {},
-          addedBy: request.user.id,
+          status: "active",
+          emailVerified: false,
+          provider: "email",
         })
         .returning();
 
-      // Update user role
-      await db
-        .update(users)
-        .set({ role, updatedAt: new Date() })
-        .where(eq(users.id, userId));
+      // Log activity
+      await db.insert(activityLogs).values({
+        userId: request.user.id,
+        action: "team_member_added",
+        resourceType: "user",
+        resourceId: newUser.id,
+        details: { newUserEmail: email, newUserRole: role },
+        ipAddress: request.ip,
+      });
+
+      // Send welcome email with credentials
+      const emailService = await import("@/services/email.service.js");
+      emailService
+        .sendAdminInviteEmail(email, fullName, password, role)
+        .catch((err) => fastify.log.error("Failed to send invite email:", err));
 
       return fastify.ok(
         reply,
-        { ...member, message: "Team member added successfully." },
+        {
+          id: newUser.id,
+          email: newUser.email,
+          fullName: newUser.fullName,
+          role: newUser.role,
+          status: newUser.status,
+          createdAt: newUser.createdAt,
+          message:
+            "Team member added successfully. Login credentials have been sent to their email.",
+        },
         201,
       );
     },
   );
 
-  // GET /api/admin/team
+  // GET /api/admin/team - Get all admin team members (non-traders)
   fastify.get(
     "/team",
     { preHandler: [fastify.requireRole("super_admin")] },
     async (request, reply) => {
       const db = fastify.db;
+      // Get users with admin roles (not traders)
       const members = await db
-        .select()
-        .from(teamMembers)
-        .orderBy(desc(teamMembers.createdAt));
+        .select({
+          id: users.id,
+          email: users.email,
+          fullName: users.fullName,
+          role: users.role,
+          status: users.status,
+          createdAt: users.createdAt,
+        })
+        .from(users)
+        .where(sql`${users.role} != 'trader'`)
+        .orderBy(desc(users.createdAt));
       return fastify.ok(reply, members);
     },
   );
 
-  // DELETE /api/admin/team/:id
+  // DELETE /api/admin/team/:id - Remove team member (change role back to trader)
   fastify.delete(
     "/team/:id",
     { preHandler: [fastify.requireRole("super_admin")] },
     async (request, reply) => {
       const db = fastify.db;
-      const [deleted] = await db
-        .delete(teamMembers)
-        .where(eq(teamMembers.id, request.params.id))
-        .returning();
-      if (!deleted)
-        return fastify.fail(reply, 404, "NOT_FOUND", "Team member not found.");
+      const userId = request.params.id;
 
-      // Reset user role to trader
+      // Get user to check role
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+
+      if (!user) {
+        return fastify.fail(reply, 404, "NOT_FOUND", "Team member not found.");
+      }
+
+      if (user.role === "super_admin") {
+        return fastify.fail(
+          reply,
+          403,
+          "FORBIDDEN",
+          "Cannot remove super admin.",
+        );
+      }
+
+      // Update user role to trader
       await db
         .update(users)
         .set({ role: "trader", updatedAt: new Date() })
-        .where(eq(users.id, deleted.userId));
+        .where(eq(users.id, userId));
+
+      // Log activity
+      await db.insert(activityLogs).values({
+        userId: request.user.id,
+        action: "team_member_removed",
+        resourceType: "user",
+        resourceId: userId,
+        details: { removedUserEmail: user.email, previousRole: user.role },
+        ipAddress: request.ip,
+      });
+
       return fastify.ok(reply, { message: "Team member removed." });
     },
   );

@@ -16,30 +16,59 @@ export default async function authRoutes(fastify) {
 
   // Helper to create or update user in local DB from Supabase data
   const syncUserFromSupabase = async (supabaseUser) => {
-    const existingUser = await getUserByEmail(supabaseUser.email);
-    
-    if (existingUser) {
+    // First try to find by supabase user ID
+    const existingBySupabaseId = await fastify.db
+      .select()
+      .from(users)
+      .where(eq(users.supabaseUserId, supabaseUser.id));
+
+    if (existingBySupabaseId.length > 0) {
       // Update last login
       await fastify.db
         .update(users)
         .set({ lastLogin: new Date() })
-        .where(eq(users.id, existingUser.id));
-      return existingUser;
+        .where(eq(users.id, existingBySupabaseId[0].id));
+      return existingBySupabaseId[0];
     }
-    
+
+    // Try to find by email
+    const existingUser = await getUserByEmail(supabaseUser.email);
+
+    if (existingUser) {
+      // Link to Supabase user if not already linked
+      await fastify.db
+        .update(users)
+        .set({
+          lastLogin: new Date(),
+          supabaseUserId: supabaseUser.id,
+          provider: "google",
+        })
+        .where(eq(users.id, existingUser.id));
+      return {
+        ...existingUser,
+        supabaseUserId: supabaseUser.id,
+        provider: "google",
+      };
+    }
+
     // Create new user in local DB
     const [newUser] = await fastify.db
       .insert(users)
       .values({
-        fullName: supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0],
+        fullName:
+          supabaseUser.user_metadata?.full_name ||
+          supabaseUser.user_metadata?.name ||
+          supabaseUser.email.split("@")[0],
         email: supabaseUser.email.toLowerCase(),
-        passwordHash: '', // OAuth users don't have password hash
+        passwordHash: null, // OAuth users don't have password hash
         phone: supabaseUser.user_metadata?.phone || null,
-        role: 'trader',
+        role: "trader",
         emailVerified: supabaseUser.email_confirmed_at ? true : false,
+        provider: "google",
+        supabaseUserId: supabaseUser.id,
       })
       .returning();
-    
+
     return newUser;
   };
 
@@ -76,16 +105,17 @@ export default async function authRoutes(fastify) {
     if (fastify.supabase) {
       try {
         // Register user in Supabase
-        const { data: supabaseUser, error: sbError } = await fastify.supabase.auth.signUp({
-          email: email.toLowerCase(),
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-              phone: phone || '',
+        const { data: supabaseUser, error: sbError } =
+          await fastify.supabase.auth.signUp({
+            email: email.toLowerCase(),
+            password,
+            options: {
+              data: {
+                full_name: fullName,
+                phone: phone || "",
+              },
             },
-          },
-        });
+          });
 
         if (sbError) {
           fastify.log.error("Supabase signup error:", sbError);
@@ -107,14 +137,21 @@ export default async function authRoutes(fastify) {
                 passwordHash,
                 phone,
                 role: "trader",
+                provider: "email",
               })
               .returning();
 
             // Send welcome email
-            emailService.sendWelcomeEmail(user.email, user.fullName).catch(err => fastify.log.error(err));
+            emailService
+              .sendWelcomeEmail(user.email, user.fullName)
+              .catch((err) => fastify.log.error(err));
 
             const token = generateToken(user);
-            return fastify.ok(reply, { user, token, supabaseSession: supabaseUser.session }, 201);
+            return fastify.ok(
+              reply,
+              { user, token, supabaseSession: supabaseUser.session },
+              201,
+            );
           }
         }
       } catch (err) {
@@ -147,7 +184,9 @@ export default async function authRoutes(fastify) {
     const token = generateToken(user);
 
     // Send welcome email asynchronously
-    emailService.sendWelcomeEmail(user.email, user.fullName).catch(err => fastify.log.error(err));
+    emailService
+      .sendWelcomeEmail(user.email, user.fullName)
+      .catch((err) => fastify.log.error(err));
 
     return fastify.ok(reply, { user, token }, 201);
   });
@@ -170,15 +209,16 @@ export default async function authRoutes(fastify) {
     // Try Supabase first if available
     if (fastify.supabase) {
       try {
-        const { data: sbData, error: sbError } = await fastify.supabase.auth.signInWithPassword({
-          email: email.toLowerCase(),
-          password,
-        });
+        const { data: sbData, error: sbError } =
+          await fastify.supabase.auth.signInWithPassword({
+            email: email.toLowerCase(),
+            password,
+          });
 
         if (!sbError && sbData.user) {
           // Sync with local DB
           const localUser = await syncUserFromSupabase(sbData.user);
-          
+
           if (localUser.status === "banned") {
             return fastify.fail(
               reply,
@@ -189,8 +229,8 @@ export default async function authRoutes(fastify) {
           }
 
           const token = generateToken(localUser);
-          return fastify.ok(reply, { 
-            user: localUser, 
+          return fastify.ok(reply, {
+            user: localUser,
             token,
             supabaseSession: sbData.session,
           });
@@ -245,89 +285,80 @@ export default async function authRoutes(fastify) {
     return fastify.ok(reply, { user, token });
   });
 
-  // GET /api/auth/google - Initiate Google OAuth
+  // GET /api/auth/google - Initiate Google OAuth (redirects to Google)
   fastify.get("/google", async (request, reply) => {
     if (!fastify.supabase) {
-      return fastify.fail(
-        reply,
-        500,
-        "OAUTH_NOT_AVAILABLE",
-        "Google sign-in is not configured.",
+      return reply.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=Google+sign-in+not+configured`,
       );
     }
 
     try {
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      
+
       const { data, error } = await fastify.supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
-          redirectTo: `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/dev/auth/google/callback`,
+          // Redirect to FRONTEND (which can parse the fragment hash)
+          redirectTo: `${frontendUrl}/auth/callback`,
           queryParams: {
-            prompt: 'select_account',
+            prompt: "select_account",
           },
         },
       });
 
       if (error) {
         fastify.log.error("Google OAuth error:", error);
-        return fastify.fail(reply, 500, "OAUTH_ERROR", error.message);
+        return reply.redirect(
+          `${frontendUrl}/login?error=${encodeURIComponent(error.message)}`,
+        );
       }
 
-      return fastify.ok(reply, { url: data.url });
+      // Redirect user to Google's OAuth page
+      return reply.redirect(data.url);
     } catch (err) {
       fastify.log.error("Google OAuth error:", err);
-      return fastify.fail(reply, 500, "OAUTH_ERROR", "Failed to initiate Google sign-in.");
+      return reply.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=Failed+to+initiate+Google+sign-in`,
+      );
     }
   });
 
-  // GET /api/auth/google/callback - Google OAuth callback
-  fastify.get("/google/callback", async (request, reply) => {
-    const { code, error, error_description } = request.query || {};
+  // POST /api/auth/sync - Sync OAuth user from Supabase (called by frontend after OAuth callback)
+  fastify.post("/sync", async (request, reply) => {
+    const { supabaseUserId, email, fullName, provider } = request.body || {};
 
-    if (error) {
-      fastify.log.error("Google OAuth callback error:", error, error_description);
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      return reply.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error_description || error)}`);
-    }
-
-    if (!code) {
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      return reply.redirect(`${frontendUrl}/login?error=No authorization code received`);
+    if (!email) {
+      return fastify.fail(reply, 422, "VALIDATION_ERROR", "Email is required.");
     }
 
     try {
-      if (!fastify.supabase) {
-        throw new Error("Supabase not available");
-      }
+      // Find or create user in local DB
+      const localUser = await syncUserFromSupabase({
+        id: supabaseUserId,
+        email: email,
+        user_metadata: {
+          full_name: fullName,
+        },
+      });
 
-      const { data, error: sbError } = await fastify.supabase.auth.exchangeCodeForSession(code);
-
-      if (sbError || !data.user) {
-        fastify.log.error("Supabase session exchange error:", sbError);
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-        return reply.redirect(`${frontendUrl}/login?error=${encodeURIComponent(sbError?.message || "Authentication failed")}`);
-      }
-
-      // Sync user to local DB
-      const localUser = await syncUserFromSupabase(data.user);
-      
       if (localUser.status === "banned") {
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-        return reply.redirect(`${frontendUrl}/login?error=Account suspended`);
+        return fastify.fail(
+          reply,
+          403,
+          "FORBIDDEN",
+          "Your account has been suspended. Please contact support.",
+        );
       }
 
       // Generate JWT token for our app
       const token = generateToken(localUser);
-      
-      // Redirect to frontend with token
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      return reply.redirect(`${frontendUrl}/auth/callback?token=${token}&userId=${localUser.id}`);
-      
+
+      // Return token and user data
+      return fastify.ok(reply, { user: localUser, token });
     } catch (err) {
-      fastify.log.error("Google callback error:", err);
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      return reply.redirect(`${frontendUrl}/login?error=${encodeURIComponent(err.message)}`);
+      fastify.log.error("Sync error:", err);
+      return fastify.fail(reply, 500, "SYNC_ERROR", "Failed to sync user.");
     }
   });
 
@@ -344,7 +375,7 @@ export default async function authRoutes(fastify) {
           fastify.log.error("Supabase signout error:", err);
         }
       }
-      
+
       reply.clearCookie("refreshToken");
       return fastify.ok(reply, { message: "Logged out successfully." });
     },
@@ -367,7 +398,7 @@ export default async function authRoutes(fastify) {
     if (user) {
       const resetToken = crypto.randomBytes(32).toString("hex");
       const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-      
+
       // Save token to local DB
       await db
         .update(users)
@@ -378,12 +409,13 @@ export default async function authRoutes(fastify) {
       emailService
         .sendPasswordResetEmail(user.email, user.fullName, resetToken)
         .catch((err) => fastify.log.error(err));
-        
+
       fastify.log.info(`Password reset token for ${email}: ${resetToken}`);
     }
 
     return fastify.ok(reply, {
-      message: "If that email is registered, a password reset link has been sent.",
+      message:
+        "If that email is registered, a password reset link has been sent.",
     });
   });
 
@@ -437,16 +469,25 @@ export default async function authRoutes(fastify) {
   });
 
   // POST /api/auth/refresh-token - Refresh JWT token
-  fastify.post("/refresh-token", { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    try {
-      await request.jwtVerify();
-      const { id, email, role } = request.user;
-      const newToken = generateToken({ id, email, role });
-      return fastify.ok(reply, { token: newToken });
-    } catch (err) {
-      return fastify.fail(reply, 401, "AUTH_REQUIRED", "Invalid or expired token.");
-    }
-  });
+  fastify.post(
+    "/refresh-token",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      try {
+        await request.jwtVerify();
+        const { id, email, role } = request.user;
+        const newToken = generateToken({ id, email, role });
+        return fastify.ok(reply, { token: newToken });
+      } catch (err) {
+        return fastify.fail(
+          reply,
+          401,
+          "AUTH_REQUIRED",
+          "Invalid or expired token.",
+        );
+      }
+    },
+  );
 
   // GET /api/auth/me - Get current user
   fastify.get(

@@ -265,4 +265,44 @@ export const emailService = {
       `,
     });
   },
+
+  async sendAdminInviteEmail(email, name, password, role) {
+    const adminUrl = process.env.ADMIN_URL || "http://localhost:5174";
+    const roleDisplay = role.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase());
+
+    return sendEmail({
+      to: email,
+      subject: "You've been invited to Noble Funded Admin",
+      html: `
+        <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #c9a84c, #f0c96a); padding: 20px; text-align: center;">
+            <h1 style="color: #070b11; margin: 0;">Noble Funded</h1>
+          </div>
+          <div style="padding: 30px; background: #fff;">
+            <h2 style="color: #333;">Hello ${name},</h2>
+            <p>You have been added to the <strong>Noble Funded Admin Team</strong> as a <strong>${roleDisplay}</strong>.</p>
+            <p>Here are your login credentials:</p>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 5px 0;"><strong>Email:</strong> ${email}</p>
+              <p style="margin: 5px 0;"><strong>Password:</strong> ${password}</p>
+              <p style="margin: 5px 0;"><strong>Role:</strong> ${roleDisplay}</p>
+            </div>
+            <p>Click the button below to access the admin portal:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${adminUrl}" style="display:inline-block; padding: 12px 24px; background-color: #c9a84c; color: #000; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Access Admin Portal</a>
+            </div>
+            <p><strong>Important:</strong> Please change your password after your first login.</p>
+            <br/>
+            <p>If you have any questions, please contact the administrator.</p>
+            <br/>
+            <p>Best regards,</p>
+            <p><strong>The Noble Funded Team</strong></p>
+          </div>
+          <div style="padding: 20px; background: #f5f5f5; text-align: center; font-size: 12px; color: #666;">
+            © ${new Date().getFullYear()} Noble Funded. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+  },
 };

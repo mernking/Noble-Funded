@@ -39,6 +39,7 @@
     "jsonwebtoken": "^9.0.2",
     "module-alias": "^2.2.3",
     "nodemailer": "^6.9.8",
+    "pg": "^8.20.0",
     "postgres": "^3.4.5",
     "resend": "^6.9.3"
   },

@@ -14,7 +14,7 @@ import {
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: varchar("email", { length: 255 }).unique().notNull(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }), // nullable for OAuth users
   fullName: varchar("full_name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   country: varchar("country", { length: 2 }).default("NG"),
@@ -22,8 +22,13 @@ export const users = pgTable("users", {
   status: varchar("status", { length: 20 }).default("active"), // active | banned | suspended
   emailVerified: boolean("email_verified").default(false),
   kycStatus: varchar("kyc_status", { length: 20 }).default("pending"),
+  // OAuth fields
+  provider: varchar("provider", { length: 20 }).default("email"), // email | google
+  supabaseUserId: varchar("supabase_user_id", { length: 255 }), // link to Supabase user
+  // Password reset
   resetToken: varchar("reset_token", { length: 255 }),
   resetTokenExpiry: timestamp("reset_token_expiry"),
+  // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   lastLogin: timestamp("last_login"),

@@ -123,8 +123,8 @@ export const auth = {
   },
 
   // Google OAuth - redirect to backend
-  async loginWithGoogle() {
-    // Redirect to backend OAuth endpoint
+  loginWithGoogle() {
+    // Redirect to backend OAuth endpoint (which redirects to Google)
     window.location.href = `${BASE_URL}/api/dev/auth/google`;
   },
 

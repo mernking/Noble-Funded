@@ -28,20 +28,62 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = getUser();
-    if (!storedUser || !auth.isAuthenticated()) {
-      navigate("/login");
-      return;
-    }
-    setUser(storedUser);
-  }, []);
+    const checkAuth = () => {
+      const storedUser = getUser();
+      if (!storedUser || !auth.isAuthenticated()) {
+        navigate("/login");
+        return;
+      }
+      setUser(storedUser);
+      setIsLoading(false);
+    };
+    
+    checkAuth();
+  }, [navigate]);
 
   const handleLogout = async () => {
     await auth.logout();
     navigate("/login");
   };
+
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#070b11",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: "1rem",
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            border: "3px solid #1e2f4a",
+            borderTopColor: "#c9a84c",
+            animation: "spin 1s linear infinite",
+          }}
+        />
+        <p style={{ color: "#7a8fa6", fontSize: "0.9rem" }}>
+          Loading dashboard...
+        </p>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -12,6 +12,7 @@ export default [
   route("contact", "routes/contact.jsx"),
   route("login", "routes/login.jsx"),
   route("signup", "routes/signup.jsx"),
+  route("auth/callback", "routes/auth/callback.jsx"),
   layout("routes/dashboard/layout.jsx", [
     route("dashboard", "routes/dashboard/overview.jsx"),
     route("dashboard/challenges", "routes/dashboard/challenges.jsx"),
