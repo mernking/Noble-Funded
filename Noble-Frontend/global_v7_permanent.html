@@ -1,0 +1,197 @@
+
+<script>
+// ---------- GLOBAL INJECTIONS V6 (COMPREHENSIVE) ---------- //
+(function() {
+    const path = window.location.pathname;
+
+    function applyHeaderFooterFixes() {
+        // 1. WhatsApp Button
+        if (!document.getElementById('wa-float-noble')) {
+            var waBtn = document.createElement('a');
+            waBtn.id = 'wa-float-noble';
+            waBtn.href = 'https://wa.me/2349070552755';
+            waBtn.target = '_blank';
+            waBtn.style.position = 'fixed';
+            waBtn.style.bottom = '20px';
+            waBtn.style.right = '20px';
+            waBtn.style.backgroundColor = '#25D366';
+            waBtn.style.color = 'white';
+            waBtn.style.borderRadius = '50px';
+            waBtn.style.padding = '10px 20px';
+            waBtn.style.fontSize = '16px';
+            waBtn.style.fontWeight = 'bold';
+            waBtn.style.boxShadow = '2px 2px 5px rgba(0,0,0,0.3)';
+            waBtn.style.zIndex = '10000';
+            waBtn.style.textDecoration = 'none';
+            waBtn.innerHTML = 'WhatsApp Support';
+            document.body.appendChild(waBtn);
+        }
+
+        // 2. Remove YouTube/Telegram/WhatsApp from the Footer Socials column
+        var footers = document.querySelectorAll('footer');
+        footers.forEach(f => {
+            var links = f.querySelectorAll('a');
+            links.forEach(a => {
+                const text = (a.textContent || '').trim().toLowerCase();
+                if (text === 'youtube' || text === 'telegram' || text === 'whatsapp' ||
+                    a.href.includes('youtube.com') || a.href.includes('t.me') || a.href.includes('wa.me')) {
+                    a.style.display = 'none';
+                }
+            });
+        });
+
+        // 3. Add "Sign Up" button next to Header's "Login"
+        var navLogins = document.querySelectorAll('a[href*="dashboard.noblefunded"]');
+        navLogins.forEach(login => {
+            if (!login.closest('footer')) {
+                if (login.nextElementSibling && login.nextElementSibling.id === 'injected-signup-btn') return;
+                
+                var signup = document.createElement('a');
+                signup.id = 'injected-signup-btn';
+                signup.href = 'https://dashboard.noblefunded.com/register';
+                signup.target = '_blank';
+                signup.textContent = 'Sign Up';
+                
+                // Add exact class list to match Login but with green background
+                signup.className = 'bg-[#14655B] text-white px-6 py-2 rounded-full hover:bg-[#002B36] transition-colors duration-300 font-medium ml-3 cursor-pointer items-center justify-center';
+                // Remove some opacity/hover classes form login if we want sign up to differ, but no matter.
+                
+                if (login.parentElement) {
+                    login.parentElement.style.display = 'flex';
+                    login.parentElement.style.alignItems = 'center';
+                    login.parentNode.insertBefore(signup, login.nextSibling);
+                }
+            }
+        });
+    }
+
+        if (path.includes('/faq')) {
+        window.switchTab = function(tabId, btnElement) {
+        document.querySelectorAll('.faq-tab-content-orig').forEach(el => el.style.display = 'none');
+        document.getElementById(tabId).style.display = 'block';
+        document.querySelectorAll('.faq-tab-btn-orig').forEach(btn => { btn.className = "inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-11 rounded-3xl px-10 max-w-xs w-full"; });
+        if(btnElement) { btnElement.className = "inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-[#A7FFEB] text-black hover:bg-[#A7FFEB]/90 h-11 rounded-3xl px-10 max-w-xs w-full"; }
+    };
+    window.toggleAccordion = function(idx) {
+        const content = document.getElementById('content-faq-' + idx);
+        const icon = document.getElementById('icon-faq-' + idx);
+        if (!content || !icon) return;
+        if (content.style.maxHeight === '0px' || content.style.maxHeight === '') {
+            content.style.maxHeight = '3000px'; icon.style.transform = 'rotate(180deg)';
+        } else {
+            content.style.maxHeight = '0px'; icon.style.transform = 'rotate(0deg)';
+        }
+
+    
+        if (path.includes('/rule')) {
+        window.switchTab = function(tabId, btnElement) {
+        document.querySelectorAll('.rules-tab-content-orig').forEach(el => el.style.display = 'none');
+        document.getElementById(tabId).style.display = 'block';
+        document.querySelectorAll('.rules-tab-btn-orig').forEach(btn => { btn.className = "inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive border bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 h-11 rounded-3xl px-10 max-w-xs w-full"; });
+        if(btnElement) { btnElement.className = "inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-[#A7FFEB] text-black hover:bg-[#A7FFEB]/90 h-11 rounded-3xl px-10 max-w-xs w-full"; }
+    };
+    window.toggleAccordion = function(idx) {
+        const content = document.getElementById('content-rules-' + idx);
+        const icon = document.getElementById('icon-rules-' + idx);
+        if (!content || !icon) return;
+        if (content.style.maxHeight === '0px' || content.style.maxHeight === '') {
+            content.style.maxHeight = '3000px'; icon.style.transform = 'rotate(180deg)';
+        } else {
+            content.style.maxHeight = '0px'; icon.style.transform = 'rotate(0deg)';
+        }
+
+
+
+    // Map the unique Challenge Fee shown above the button to the correct plan
+    var PRICE_TO_PLAN_MAP = {
+        '\u20a610,000': 'ngn-200k', '\u20a619,000': 'ngn-400k', '\u20a629,000': 'ngn-600k',
+        '\u20a639,000': 'ngn-800k', '\u20a654,000': 'ngn-1m', '\u20a6190,000': 'ngn-3m',
+        '$29.99': 'usd-5k', '$59.99': 'usd-10k', '$134.99': 'usd-25k',
+        '$219.99': 'usd-50k', '$379.99': 'usd-100k', '$749.99': 'usd-200k'
+    };
+
+    function getPlanFromPriceCard(cardEl) {
+        var text = cardEl ? (cardEl.innerText || cardEl.textContent || '') : '';
+        var keys = Object.keys(PRICE_TO_PLAN_MAP);
+        for (var i = 0; i < keys.length; i++) {
+            if (text.indexOf(keys[i]) !== -1) return PRICE_TO_PLAN_MAP[keys[i]];
+        }
+        return null;
+    }
+
+    function setupGlobalCheckoutInterceptor() {
+        if (window._nobleCheckoutInterceptorActive) return;
+        window._nobleCheckoutInterceptorActive = true;
+
+        window.addEventListener('click', function(e) {
+            var target = e.target;
+            var linkNode = null;
+            while (target && target !== document) {
+                if ((target.tagName === 'A' || target.tagName === 'BUTTON') && 
+                    (target.textContent || target.innerText || '').trim().toLowerCase().indexOf('get funded') !== -1 &&
+                    (target.textContent || target.innerText || '').trim().toLowerCase().indexOf('get funded now') === -1) {
+                    linkNode = target;
+                    break;
+                }
+                target = target.parentNode;
+            }
+            if (!linkNode) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Walk up max 7 levels to find the price box
+            var node = linkNode;
+            var plan = null;
+            for (var i = 0; i < 7; i++) {
+                if (!node || !node.parentElement) break;
+                node = node.parentElement;
+                plan = getPlanFromPriceCard(node);
+                if (plan) break;
+            }
+
+            var checkoutUrl = 'https://noble-funded-checkout.vercel.app' + (plan ? '?plan=' + plan : '');
+            window.open(checkoutUrl, '_blank');
+        }, true);
+    }
+
+    function applyAll() {
+        setupGlobalCheckoutInterceptor();
+        applyHeaderFooterFixes();
+        
+        if (path.includes('/faq')) {
+            if (typeof replaceFaq !== 'undefined') replaceFaq();
+        }
+        if (path.includes('/rule')) {
+            if (typeof replaceRules !== 'undefined') replaceRules();
+        }
+    }
+
+    if (document.readyState === 'loading') {    
+        document.addEventListener('DOMContentLoaded', applyAll);
+    } else {
+        applyAll();
+    }
+
+    var attempts = 0;
+    var interval = setInterval(function() {
+        applyAll();
+        if (++attempts > 150) clearInterval(interval);
+    }, 100);
+
+    var observer = new MutationObserver(function() { applyAll(); });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(function() { clearInterval(interval); }, 20000);
+})();
+// ---------- END GLOBAL INJECTIONS V6 ---------- //
+</script>
+<style>
+.intercom-lightweight-app, .intercom-launcher, .intercom-launcher-frame,
+iframe[name="intercom-launcher-frame"], .intercom-namespace,
+[class*="intercom"] { display: none !important; visibility: hidden !important; pointer-events: none !important; }
+
+/* Suppress Referral Program link */
+a[href*="/affiliate"], a[href*="Referral Program"] {
+    display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important; pointer-events: none !important;
+}
+</style>

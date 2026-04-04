@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+
+    /* Royal Emerald — always dark (noble brand) */
+    --background: 193 100% 7%;        /* #002029 — deep navy */
+    --foreground: 158 60% 90%;        /* near-mint light text */
+    --card: 193 55% 10%;              /* #001e27 slightly lighter panel */
+    --card-foreground: 158 60% 88%;
+    --popover: 193 60% 9%;
+    --popover-foreground: 158 60% 88%;
+    --primary: 158 100% 77%;          /* #A7FFEB mint as primary action */
+    --primary-foreground: 193 100% 8%;
+    --secondary: 168 40% 16%;
+    --secondary-foreground: 158 60% 88%;
+    --muted: 168 30% 13%;
+    --muted-foreground: 168 20% 52%;
+    --accent: 168 52% 24%;            /* #14655B emerald accent */
+    --accent-foreground: 158 100% 83%;
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 168 30% 16%;
+    --input: 168 28% 14%;
+    --ring: 158 100% 77%;
+    --radius: 0.75rem;
+
+    /* Noble brand tokens */
+    --noble-dark: 193 100% 11%;       /* #002B36 */
+    --noble-emerald: 168 52% 22%;     /* #14655B */
+    --noble-mint: 158 100% 83%;       /* #A7FFEB */
+  }
+
+  /* keep .dark identical so it doesn't revert to light */
+  .dark {
+    --background: 193 100% 7%;
+    --foreground: 158 60% 90%;
+    --card: 193 55% 10%;
+    --card-foreground: 158 60% 88%;
+    --popover: 193 60% 9%;
+    --popover-foreground: 158 60% 88%;
+    --primary: 158 100% 77%;
+    --primary-foreground: 193 100% 8%;
+    --secondary: 168 40% 16%;
+    --secondary-foreground: 158 60% 88%;
+    --muted: 168 30% 13%;
+    --muted-foreground: 168 20% 52%;
+    --accent: 168 52% 24%;
+    --accent-foreground: 158 100% 83%;
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 168 30% 16%;
+    --input: 168 28% 14%;
+    --ring: 158 100% 77%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

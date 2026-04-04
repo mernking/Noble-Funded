@@ -1,0 +1,15 @@
+import { writeFileSync } from "fs";
+writeFileSync("/home/user/package.json", JSON.stringify({
+  name: "noble-funded-admin", version: "0.1.0", private: true,
+  scripts: { dev: "next dev", build: "next build", start: "next start" },
+  dependencies: {
+    "next": "^15.0.0", "react": "^19.0.0", "react-dom": "^19.0.0",
+    "recharts": "^2.13.0", "lucide-react": "^0.469.0",
+    "clsx": "^2.1.1", "tailwind-merge": "^2.5.5"
+  },
+  devDependencies: {
+    "@types/node": "^22", "@types/react": "^19", "@types/react-dom": "^19",
+    "typescript": "^5", "tailwindcss": "^3.4.17", "postcss": "^8", "autoprefixer": "^10.0.1"
+  }
+}, null, 2));
+console.log("package.json written");

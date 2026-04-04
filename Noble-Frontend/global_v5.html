@@ -1,0 +1,166 @@
+
+<script>
+// ---------- GLOBAL INJECTIONS V5 (HEADER & FOOTER FIXES) ---------- //
+(function() {
+    const path = window.location.pathname;
+
+    function nukeIntercom() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            if (iframes[i].name === 'intercom-launcher-frame' || iframes[i].className.includes('intercom')) {
+                iframes[i].remove();
+            }
+        }
+    }
+
+    function applyHeaderFooterFixes() {
+        // 1. WhatsApp Button
+        if (!document.getElementById('wa-float-noble')) {
+            var waBtn = document.createElement('a');
+            waBtn.id = 'wa-float-noble';
+            waBtn.href = 'https://wa.me/2349070552755';
+            waBtn.target = '_blank';
+            waBtn.style.position = 'fixed';
+            waBtn.style.bottom = '20px';
+            waBtn.style.right = '20px';
+            waBtn.style.backgroundColor = '#25D366';
+            waBtn.style.color = 'white';
+            waBtn.style.borderRadius = '50px';
+            waBtn.style.padding = '10px 20px';
+            waBtn.style.fontSize = '16px';
+            waBtn.style.fontWeight = 'bold';
+            waBtn.style.boxShadow = '2px 2px 5px rgba(0,0,0,0.3)';
+            waBtn.style.zIndex = '10000';
+            waBtn.style.textDecoration = 'none';
+            waBtn.innerHTML = 'WhatsApp Support';
+            document.body.appendChild(waBtn);
+        }
+
+        // 2. Remove YouTube/Telegram/WhatsApp from the Footer Socials column
+        var footers = document.querySelectorAll('footer');
+        footers.forEach(f => {
+            var links = f.querySelectorAll('a');
+            links.forEach(a => {
+                const text = (a.textContent || '').trim().toLowerCase();
+                if (text === 'youtube' || text === 'telegram' || text === 'whatsapp' ||
+                    a.href.includes('youtube.com') || a.href.includes('t.me') || a.href.includes('wa.me')) {
+                    a.style.display = 'none';
+                }
+            });
+        });
+
+        // 3. Add "Sign Up" button next to Header's "Login"
+        var navLogins = document.querySelectorAll('a[href*="dashboard.noblefunded"]');
+        navLogins.forEach(login => {
+            // Find if this is in the header (or simply not the footer)
+            if (!login.closest('footer')) {
+                // Ensure we don't duplicate
+                if (login.nextElementSibling && login.nextElementSibling.id === 'injected-signup-btn') return;
+                
+                var signup = document.createElement('a');
+                signup.id = 'injected-signup-btn';
+                signup.href = 'https://dashboard.noblefunded.com/register';
+                signup.target = '_blank';
+                signup.textContent = 'Sign Up';
+                
+                // Base classes from the user's template. Make it stand out.
+                signup.className = 'bg-[#14655B] text-white px-6 py-2 rounded-full hover:bg-[#002B36] transition-colors duration-300 font-medium ml-3 cursor-pointer items-center justify-center';
+                
+                // Ensure the parent is a flex container so they sit side-by-side
+                if (login.parentElement) {
+                    login.parentElement.style.display = 'flex';
+                    login.parentElement.style.alignItems = 'center';
+                    login.parentNode.insertBefore(signup, login.nextSibling);
+                }
+            }
+        });
+    }
+
+
+    // Map the unique Challenge Fee shown above the button to the correct plan
+    var PRICE_TO_PLAN_MAP = {
+        '\u20a610,000': 'ngn-200k', '\u20a619,000': 'ngn-400k', '\u20a629,000': 'ngn-600k',
+        '\u20a639,000': 'ngn-800k', '\u20a654,000': 'ngn-1m', '\u20a6190,000': 'ngn-3m',
+        '$29.99': 'usd-5k', '$59.99': 'usd-10k', '$134.99': 'usd-25k',
+        '$219.99': 'usd-50k', '$379.99': 'usd-100k', '$749.99': 'usd-200k'
+    };
+
+    function getPlanFromPriceCard(cardEl) {
+        var text = cardEl ? (cardEl.innerText || cardEl.textContent || '') : '';
+        var keys = Object.keys(PRICE_TO_PLAN_MAP);
+        for (var i = 0; i < keys.length; i++) {
+            if (text.indexOf(keys[i]) !== -1) return PRICE_TO_PLAN_MAP[keys[i]];
+        }
+        return null;
+    }
+
+    function setupGlobalCheckoutInterceptor() {
+        if (window._nobleCheckoutInterceptorActive) return;
+        window._nobleCheckoutInterceptorActive = true;
+
+        window.addEventListener('click', function(e) {
+            var target = e.target;
+            var linkNode = null;
+            while (target && target !== document) {
+                if ((target.tagName === 'A' || target.tagName === 'BUTTON') && 
+                    (target.textContent || target.innerText || '').trim().toLowerCase().indexOf('get funded') !== -1 &&
+                    (target.textContent || target.innerText || '').trim().toLowerCase().indexOf('get funded now') === -1) {
+                    linkNode = target;
+                    break;
+                }
+                target = target.parentNode;
+            }
+            if (!linkNode) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Walk up max 7 levels to find the price box
+            var node = linkNode;
+            var plan = null;
+            for (var i = 0; i < 7; i++) {
+                if (!node || !node.parentElement) break;
+                node = node.parentElement;
+                plan = getPlanFromPriceCard(node);
+                if (plan) break;
+            }
+
+            var checkoutUrl = 'https://noble-funded-checkout.vercel.app' + (plan ? '?plan=' + plan : '');
+            window.open(checkoutUrl, '_blank');
+        }, true);
+    }
+
+    function applyAll() {
+        setupGlobalCheckoutInterceptor();
+        nukeIntercom();
+        applyHeaderFooterFixes();
+    }
+
+    if (document.readyState === 'loading') {    
+        document.addEventListener('DOMContentLoaded', applyAll);
+    } else {
+        applyAll();
+    }
+
+    var attempts = 0;
+    var interval = setInterval(function() {
+        applyAll();
+        if (++attempts > 150) clearInterval(interval);
+    }, 100);
+
+    var observer = new MutationObserver(function() { applyAll(); });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(function() { observer.disconnect(); clearInterval(interval); }, 20000);
+})();
+// ---------- END GLOBAL INJECTIONS V5 ---------- //
+</script>
+<style>
+.intercom-lightweight-app, .intercom-launcher, .intercom-launcher-frame,
+iframe[name="intercom-launcher-frame"], .intercom-namespace,
+[class*="intercom"] { display: none !important; visibility: hidden !important; pointer-events: none !important; }
+
+/* Suppress Referral Program link */
+a[href*="/affiliate"], a[href*="Referral Program"] {
+    display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important; pointer-events: none !important;
+}
+</style>
