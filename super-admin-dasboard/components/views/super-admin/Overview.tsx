@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   TrendingUp, Users, Trophy, CreditCard, AlertCircle,
   RefreshCw, Download, ArrowRight, CheckCircle, UserPlus,
   Award, Server, AlertTriangle, ArrowUpRight, ArrowDownRight,
-  Activity, Shield, Clock, Zap,
+  Activity, Shield, Clock, Zap, Loader2,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Legend,
 } from "recharts";
+import { api } from "@/lib/api";
 
 const revenueData = [
   { day: "Apr 1", rev: 210000, payouts: 85000, net: 125000 },
@@ -120,21 +121,46 @@ const SYSTEM_DATA = {
 
 export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab: string) => void }) {
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
   const [timeRange, setTimeRange] = useState<"7D" | "30D" | "90D">("30D");
   const [system, setSystem] = useState<SystemFilter>("all");
 
-  const systemData = SYSTEM_DATA[system];
+  const fetchData = async () => {
+    try {
+      const response = await api.get("admin/dashboard/stats");
+      setStats(response.data);
+    } catch (err) {
+      console.error("Failed to fetch admin stats", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    fetchData();
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="w-8 h-8 text-[#00ffcc] animate-spin" />
+        <p className="text-sm text-[#a8c0b8]">Loading system overview...</p>
+      </div>
+    );
+  }
 
   const kpis = [
     {
-      label: "REVENUE TODAY",
-      value: systemData.revenue,
-      sub: systemData.revenueSub,
+      label: "REVENUE TOTAL",
+      value: stats ? `₦${Number(stats.totalRevenue).toLocaleString()}` : "₦847,000",
+      sub: "+12.4% overall",
       trend: "up",
       icon: TrendingUp,
       iconColor: "#00ffcc",
@@ -142,19 +168,19 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
       badgeColor: "#00ffcc",
     },
     {
-      label: "NEW SIGNUPS",
-      value: "23 Users",
-      sub: "Target: 20 users/day",
+      label: "TOTAL TRADERS",
+      value: stats ? `${stats.totalUsers} Users` : "23 Users",
+      sub: "Registered traders",
       trend: "up",
       icon: Users,
       iconColor: "#34d399",
-      badge: "TARGET MET",
+      badge: "LIVE",
       badgeColor: "#34d399",
     },
     {
       label: "ACTIVE CHALLENGES",
-      value: systemData.challenges,
-      sub: system === "all" ? "Across all plan tiers" : system === "NGN" ? "Naira plan tiers" : "Dollar plan tiers",
+      value: stats ? stats.activeChallenges.toString() : "156",
+      sub: "Across all systems",
       trend: "up",
       icon: Trophy,
       iconColor: "#ffbc7c",
@@ -163,33 +189,33 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
     },
     {
       label: "PENDING PAYOUTS",
-      value: systemData.pendingPayouts,
-      sub: "Awaiting compliance review",
+      value: stats ? stats.pendingPayouts.toString() : "8",
+      sub: "Awaiting approval",
       trend: "warn",
       icon: CreditCard,
       iconColor: "#ff6b6b",
-      badge: "ACTION NEEDED",
+      badge: "ACTION",
       badgeColor: "#ff6b6b",
     },
     {
-      label: "KYC PENDING",
-      value: "12 Users",
-      sub: "Awaiting document review",
-      trend: "warn",
-      icon: Shield,
-      iconColor: "#60a5fa",
-      badge: "REVIEW",
-      badgeColor: "#60a5fa",
+      label: "PASSED",
+      value: stats ? stats.passedChallenges.toString() : "45",
+      sub: "Completed evaluations",
+      trend: "up",
+      icon: CheckCircle,
+      iconColor: "#34d399",
+      badge: "SUCCESS",
+      badgeColor: "#34d399",
     },
     {
-      label: "TOTAL TRADERS",
-      value: systemData.traders,
-      sub: system === "all" ? "All-time registrations" : system === "NGN" ? "Naira account holders" : "Dollar account holders",
-      trend: "up",
-      icon: UserPlus,
-      iconColor: "#a78bfa",
-      badge: "+8.2%",
-      badgeColor: "#a78bfa",
+      label: "FAILED",
+      value: stats ? stats.failedChallenges.toString() : "12",
+      sub: "Risk management hits",
+      trend: "danger",
+      icon: AlertCircle,
+      iconColor: "#ff6b6b",
+      badge: "FAILED",
+      badgeColor: "#ff6b6b",
     },
     {
       label: "PLATFORM UPTIME",
@@ -203,13 +229,13 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
     },
     {
       label: "ALERTS TODAY",
-      value: "4 Issues",
-      sub: "1 critical, 3 warnings",
-      trend: "danger",
-      icon: AlertCircle,
-      iconColor: "#ff6b6b",
-      badge: "MONITOR",
-      badgeColor: "#ff6b6b",
+      value: "0 Issues",
+      sub: "System healthy",
+      trend: "up",
+      icon: Activity,
+      iconColor: "#00ffcc",
+      badge: "CLEAN",
+      badgeColor: "#00ffcc",
     },
   ];
 

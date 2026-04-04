@@ -25,6 +25,9 @@ export const users = pgTable("users", {
   // OAuth fields
   provider: varchar("provider", { length: 20 }).default("email"), // email | google
   supabaseUserId: varchar("supabase_user_id", { length: 255 }), // link to Supabase user
+  // Verification fields
+  verificationCode: varchar("verification_code", { length: 6 }),
+  verificationCodeExpiry: timestamp("verification_code_expiry"),
   // Password reset
   resetToken: varchar("reset_token", { length: 255 }),
   resetTokenExpiry: timestamp("reset_token_expiry"),

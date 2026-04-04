@@ -10,6 +10,8 @@ export default fp(
       origin: [
         process.env.FRONTEND_URL,
         process.env.ADMIN_URL,
+        process.env.CHECKOUT_URL,
+        /^http:\/\/localhost:\d+$/, // Allow all localhost ports
       ],
       credentials: true,
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],

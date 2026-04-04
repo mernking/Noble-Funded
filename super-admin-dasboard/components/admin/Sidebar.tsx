@@ -47,6 +47,7 @@ interface SidebarProps {
   onSignOut?: () => void;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
+  user: any;
 }
 
 // SidebarInner is defined OUTSIDE the Sidebar component so React never
@@ -61,10 +62,11 @@ function SidebarInner({
   onTabChange,
   onSignOut,
   onMobileCloseButton,
+  user,
 }: SidebarInnerProps) {
   const config = ROLE_CONFIGS[role];
   const roleColor = ROLE_COLORS[role];
-  const initials = ROLE_INITIALS[role];
+  const initials = user?.fullName?.split(" ").map((n: any) => n[0]).join("") || ROLE_INITIALS[role];
 
   // Preserve scroll position across tab changes
   const navRef = useRef<HTMLElement>(null);
@@ -203,7 +205,7 @@ function SidebarInner({
             {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-white truncate">Alexander Noble</p>
+            <p className="text-xs font-semibold text-white truncate">{user?.fullName || "Alexander Noble"}</p>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: "#00ffcc" }} />
               <span className="text-[10px] text-[#a8c0b8]/60 truncate">Live Trading Active</span>
@@ -230,6 +232,7 @@ export default function Sidebar({
   onSignOut,
   isMobileOpen = false,
   onMobileClose,
+  user,
 }: SidebarProps) {
   return (
     <>
@@ -240,6 +243,7 @@ export default function Sidebar({
           activeTab={activeTab}
           onTabChange={onTabChange}
           onSignOut={onSignOut}
+          user={user}
         />
       </div>
 
@@ -260,6 +264,7 @@ export default function Sidebar({
               onTabChange={onTabChange}
               onSignOut={onSignOut}
               onMobileCloseButton={onMobileClose}
+              user={user}
             />
           </div>
         </>

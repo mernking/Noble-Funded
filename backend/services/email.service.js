@@ -266,6 +266,34 @@ export const emailService = {
     });
   },
 
+  async sendVerificationCode(email, code) {
+    return sendEmail({
+      to: email,
+      subject: "Verification Code - Noble Funded",
+      html: `
+        <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #c9a84c, #f0c96a); padding: 20px; text-align: center;">
+            <h1 style="color: #070b11; margin: 0;">Noble Funded</h1>
+          </div>
+          <div style="padding: 30px; background: #fff;">
+            <h2 style="color: #333;">Verify your email address</h2>
+            <p>Use the verification code below to complete your checkout process. This code will expire in 10 minutes.</p>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+              <h1 style="margin: 0; font-size: 32px; letter-spacing: 10px; color: #c9a84c;">${code}</h1>
+            </div>
+            <p>If you did not request this code, you can safely ignore this email.</p>
+            <br/>
+            <p>Best regards,</p>
+            <p><strong>The Noble Funded Team</strong></p>
+          </div>
+          <div style="padding: 20px; background: #f5f5f5; text-align: center; font-size: 12px; color: #666;">
+            © ${new Date().getFullYear()} Noble Funded. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+  },
+
   async sendAdminInviteEmail(email, name, password, role) {
     const adminUrl = process.env.ADMIN_URL || "http://localhost:5174";
     const roleDisplay = role.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase());

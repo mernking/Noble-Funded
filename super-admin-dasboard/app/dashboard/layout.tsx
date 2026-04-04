@@ -4,12 +4,13 @@ import type React from "react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 
+import { auth } from "@/lib/api"
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    const loggedIn = sessionStorage.getItem("nf_admin_logged_in")
-    if (!loggedIn) {
+    if (!auth.isAuthenticated()) {
       router.replace("/login")
     }
   }, [router])

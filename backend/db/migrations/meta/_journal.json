@@ -15,6 +15,13 @@
       "when": 1773920075948,
       "tag": "0001_right_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775270710153,
+      "tag": "0002_goofy_sunfire",
+      "breakpoints": true
     }
   ]
 }

@@ -1,22 +1,72 @@
 "use client";
 
-import { useState } from "react";
-import { Save, RefreshCw, Shield, Bell, CreditCard, Globe, Lock, Zap } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Save, RefreshCw, Shield, Bell, CreditCard, Globe, Lock, Zap, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function SettingsView() {
   const [profitSplit, setProfitSplit] = useState(80);
   const [maxDrawdown, setMaxDrawdown] = useState(10);
   const [dailyDrawdown, setDailyDrawdown] = useState(5);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  
   const [twoFA, setTwoFA] = useState(true);
   const [autoPayouts, setAutoPayouts] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [emailAlerts, setEmailAlerts] = useState(true);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const fetchSettings = async () => {
+    try {
+      const response = await api.get("admin/settings");
+      const s = response.data;
+      if (s.profitSplit) setProfitSplit(s.profitSplit);
+      if (s.maxDrawdown) setMaxDrawdown(s.maxDrawdown);
+      if (s.dailyDrawdown) setDailyDrawdown(s.dailyDrawdown);
+      if (s.twoFA !== undefined) setTwoFA(s.twoFA);
+      if (s.autoPayouts !== undefined) setAutoPayouts(s.autoPayouts);
+      if (s.maintenanceMode !== undefined) setMaintenanceMode(s.maintenanceMode);
+      if (s.emailAlerts !== undefined) setEmailAlerts(s.emailAlerts);
+    } catch (err) {
+      console.error("Failed to fetch settings", err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const handleSave = async () => {
+    setSaved(false);
+    try {
+      await api.put("admin/settings", {
+        profitSplit,
+        maxDrawdown,
+        dailyDrawdown,
+        twoFA,
+        autoPayouts,
+        maintenanceMode,
+        emailAlerts
+      });
+      setSaved(true);
+      toast.success("Settings saved successfully");
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save settings");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="w-8 h-8 text-[#00ffcc] animate-spin" />
+        <p className="text-sm text-[#a8c0b8]">Loading system configurations...</p>
+      </div>
+    );
+  }
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
     <button

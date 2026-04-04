@@ -14,6 +14,7 @@ export default async function paymentsRoutes(fastify) {
         amount,
         currency = "NGN",
         tier = 0,
+        metadata = {},
       } = request.body || {};
 
       if (!challengeType || !amount) {
@@ -38,7 +39,7 @@ export default async function paymentsRoutes(fastify) {
           status: "pending",
           paymentProvider: "flutterwave",
           providerRef: ref,
-          metadata: { challengeType, tier },
+          metadata: { ...metadata, challengeType, tier },
         })
         .returning();
 
@@ -51,14 +52,14 @@ export default async function paymentsRoutes(fastify) {
           tx_ref: ref,
           amount,
           currency,
-          redirect_url: `${frontendUrl}/dashboard/challenges`,
+          redirect_url: `${frontendUrl}/dashboard/accounts`, // Redirect to accounts page
           customer: {
             email: request.user.email,
-            name: "Trader",
+            name: request.user.fullName || "Trader",
           },
           customizations: {
             title: "Noble Funded Challenge",
-            description: `Payment for ${challengeType} tier ${tier} challenge`,
+            description: `Payment for ${challengeType} ${tier} challenge`,
           },
         });
       } catch (err) {
@@ -133,23 +134,26 @@ export default async function paymentsRoutes(fastify) {
     // Parse metadata for challenge info
     const meta = transaction.metadata || {};
     const challengeType = meta.challengeType || "naira";
+    const accountSizeStr = meta.accountSize || meta.tier || "0";
+    
+    // Extract numeric balance from string like "₦200,000" or "$5,000" or just use the tier
+    let startingBalance = 0;
+    if (typeof accountSizeStr === "string") {
+      startingBalance = parseInt(accountSizeStr.replace(/[^0-9]/g, ""));
+    } else {
+      startingBalance = Number(accountSizeStr);
+    }
 
-    // Create MT5 account via broker API (mocked here), insert challenge
-    const mt5Login = Math.floor(10000000 + Math.random() * 90000000).toString();
-    const startingBalance =
-      challengeType === "naira"
-        ? meta.tier === 0
-          ? 200000
-          : meta.tier === 1
-            ? 500000
-            : 1000000
-        : meta.tier === 0
-          ? 15000
-          : meta.tier === 1
-            ? 50000
-            : 100000;
+    if (isNaN(startingBalance) || startingBalance === 0) {
+      // Fallback to old tier logic if parsing fails
+      startingBalance =
+        challengeType === "naira"
+          ? meta.tier === 0 ? 200000 : meta.tier === 1 ? 500000 : 1000000
+          : meta.tier === 0 ? 15000 : meta.tier === 1 ? 50000 : 100000;
+    }
 
-    const profitTarget = startingBalance * 2; // Assuming 2x logic
+    const profitTargetPct = challengeType === "naira" ? 0.10 : 0.10; // Phase 1 target
+    const profitTarget = startingBalance * profitTargetPct;
 
     await db.insert(challenges).values({
       userId: transaction.userId,
@@ -158,8 +162,12 @@ export default async function paymentsRoutes(fastify) {
       currentBalance: String(startingBalance),
       currentEquity: String(startingBalance),
       profitTarget: String(profitTarget),
+      maxDrawdownPct: challengeType === "naira" ? "20.00" : "10.00",
+      maxDailyLossPct: challengeType === "naira" ? "0.00" : "3.00",
+      durationDays: challengeType === "naira" ? 60 : 90,
       status: "active",
       mt5Login,
+      phase: 1,
     });
 
     if (user) {

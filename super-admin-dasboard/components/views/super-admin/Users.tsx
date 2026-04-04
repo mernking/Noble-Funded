@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Filter, UserPlus, MoreVertical, TrendingUp, TrendingDown, Users, Activity, AlertTriangle, X, Ban, Shield, Eye, Mail, Phone, MapPin, CreditCard, CheckCircle, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Filter, UserPlus, MoreVertical, TrendingUp, TrendingDown, Users, Activity, AlertTriangle, X, Ban, Shield, Eye, Mail, Phone, MapPin, CreditCard, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 interface User {
   id: string;
@@ -24,34 +26,24 @@ interface User {
   totalEarned: string;
 }
 
-const users: User[] = [
-  { id: "#NF-89210", name: "Felix Henderson", email: "felix.h@tradenet.io", phone: "+234 812 000 0001", country: "Nigeria", type: "FUNDED", balance: "$100,000", perf: "+4.2%", status: "Active", positive: true, kyc: "Verified", joined: "2025-08-14", totalChallenges: 3, passed: 2, failed: 1, totalSpent: "₦255,000", totalEarned: "₦1,200,000" },
-  { id: "#NF-89211", name: "Sarah Valerius", email: "s.valerius@fintech.com", phone: "+234 803 111 2222", country: "Nigeria", type: "PHASE 2", balance: "$50,000", perf: "-1.8%", status: "Flagged", positive: false, kyc: "Verified", joined: "2025-09-01", totalChallenges: 2, passed: 1, failed: 1, totalSpent: "₦90,000", totalEarned: "₦0" },
-  { id: "#NF-89212", name: "Marcus Thorne", email: "mthorne@protrader.net", phone: "+44 7900 111 222", country: "UK", type: "PHASE 1", balance: "$25,000", perf: "+0.5%", status: "Inactive", positive: true, kyc: "Pending", joined: "2025-10-20", totalChallenges: 1, passed: 0, failed: 0, totalSpent: "$199", totalEarned: "$0" },
-  { id: "#NF-89213", name: "Ayo Tobi", email: "ayo.tobi@gmail.com", phone: "+234 807 222 3333", country: "Nigeria", type: "FUNDED", balance: "$200,000", perf: "+8.2%", status: "Active", positive: true, kyc: "Verified", joined: "2025-07-05", totalChallenges: 5, passed: 4, failed: 1, totalSpent: "₦425,000", totalEarned: "₦3,200,000" },
-  { id: "#NF-89214", name: "Elena Vasquez", email: "e.vasquez@invest.io", phone: "+52 55 1234 5678", country: "Mexico", type: "PHASE 2", balance: "$50,000", perf: "-3.4%", status: "Flagged", positive: false, kyc: "Rejected", joined: "2025-11-02", totalChallenges: 2, passed: 1, failed: 1, totalSpent: "$298", totalEarned: "$0" },
-  { id: "#NF-89215", name: "James Okafor", email: "j.okafor@trader.ng", phone: "+234 818 333 4444", country: "Nigeria", type: "PHASE 1", balance: "$25,000", perf: "+1.1%", status: "Active", positive: true, kyc: "Verified", joined: "2026-01-10", totalChallenges: 1, passed: 0, failed: 0, totalSpent: "₦45,000", totalEarned: "₦0" },
-  { id: "#NF-89216", name: "Priya Sharma", email: "p.sharma@fundedtrader.in", phone: "+91 99887 77665", country: "India", type: "FUNDED", balance: "$100,000", perf: "+5.7%", status: "Active", positive: true, kyc: "Verified", joined: "2025-09-18", totalChallenges: 4, passed: 3, failed: 1, totalSpent: "$597", totalEarned: "$3,800" },
-  { id: "#NF-89217", name: "David Kowalski", email: "d.kowalski@broker.net", phone: "+48 600 111 222", country: "Poland", type: "PHASE 1", balance: "$25,000", perf: "-0.9%", status: "Inactive", positive: false, kyc: "Pending", joined: "2026-02-14", totalChallenges: 1, passed: 0, failed: 0, totalSpent: "$99", totalEarned: "$0" },
-];
-
 const statusStyles: Record<string, string> = {
-  Active: "chip-active",
-  Flagged: "chip-danger",
-  Inactive: "chip-neutral",
-  Banned: "bg-[#7f1d1d]/40 text-[#ff4444] border border-[#ff4444]/30",
+  active: "chip-active",
+  flagged: "chip-danger",
+  inactive: "chip-neutral",
+  banned: "bg-[#7f1d1d]/40 text-[#ff4444] border border-[#ff4444]/30",
 };
 
 const typeStyles: Record<string, string> = {
-  FUNDED: "bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20",
-  "PHASE 2": "bg-[#ffbc7c]/10 text-[#ffbc7c] border border-[#ffbc7c]/20",
-  "PHASE 1": "bg-[#b9cbc2]/10 text-[#b9cbc2] border border-[#b9cbc2]/20",
+  naira: "bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20",
+  dollar: "bg-[#ffbc7c]/10 text-[#ffbc7c] border border-[#ffbc7c]/20",
+  "N/A": "bg-[#b9cbc2]/10 text-[#b9cbc2] border border-[#b9cbc2]/20",
 };
 
 const kycStyles: Record<string, string> = {
-  Verified: "text-[#00ffcc]",
-  Pending: "text-[#f59e0b]",
-  Rejected: "text-[#ff4444]",
+  verified: "text-[#00ffcc]",
+  pending: "text-[#f59e0b]",
+  rejected: "text-[#ff4444]",
+  unverified: "text-[#b9cbc2]/40",
 };
 
 interface UsersViewProps {
@@ -59,32 +51,74 @@ interface UsersViewProps {
 }
 
 export default function UsersView({ onViewTrader }: UsersViewProps = {}) {
-  const [allUsers, setAllUsers] = useState<User[]>(users);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, active: 0, pending: 0 });
+  
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [accountFilter, setAccountFilter] = useState("All Types");
   const [page, setPage] = useState(1);
+  const [totalUsersCount, setTotalUsersCount] = useState(0);
+  
   const [detailUser, setDetailUser] = useState<User | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const filtered = allUsers.filter((u) => {
-    const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase()) ||
-      u.id.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "All Status" || u.status === statusFilter;
-    const matchType = accountFilter === "All Types" || u.type === accountFilter;
-    return matchSearch && matchStatus && matchType;
-  });
-
-  const banUser = (id: string) => {
-    setAllUsers((prev) => prev.map((u) => u.id === id ? { ...u, status: u.status === "Banned" ? "Active" : "Banned" } : u));
-    setActionMenuId(null);
-    if (detailUser?.id === id) setDetailUser((prev) => prev ? { ...prev, status: prev.status === "Banned" ? "Active" : "Banned" } : null);
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get(`admin/users?page=${page}&search=${search}`);
+      const data = response.data;
+      
+      const mappedUsers: User[] = data.users.map((u: any) => ({
+        id: u.id,
+        name: u.fullName,
+        email: u.email,
+        phone: u.phone || "N/A",
+        country: u.country || "NG",
+        type: u.accountType || "N/A",
+        balance: u.accountType === 'naira' ? `₦${Number(u.currentBalance).toLocaleString()}` : `$${Number(u.currentBalance).toLocaleString()}`,
+        perf: "0.0%", // needs to be calculated
+        positive: true,
+        status: u.status,
+        kyc: u.kycStatus,
+        joined: new Date(u.createdAt).toISOString().split('T')[0],
+        totalChallenges: u.totalChallenges,
+        passed: u.passedChallenges,
+        failed: u.failedChallenges,
+        totalSpent: `₦${Number(u.totalSpent).toLocaleString()}`,
+        totalEarned: `₦${Number(u.totalEarned).toLocaleString()}`,
+      }));
+      
+      setAllUsers(mappedUsers);
+      setTotalUsersCount(data.total || mappedUsers.length);
+      
+      // Basic stats calculation for now
+      const active = mappedUsers.filter(u => u.status === 'active').length;
+      const pending = mappedUsers.filter(u => u.kyc === 'pending').length;
+      setStats({ total: data.total || mappedUsers.length, active, pending });
+      
+    } catch (error) {
+      console.error("Failed to fetch users", error);
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const flagUser = (id: string) => {
-    setAllUsers((prev) => prev.map((u) => u.id === id ? { ...u, status: u.status === "Flagged" ? "Active" : "Flagged" } : u));
+  useEffect(() => {
+    fetchUsers();
+  }, [page, search]);
+
+  const banUser = async (id: string) => {
+    // Need backend endpoint for this
+    toast.error("Endpoint /api/admin/users/:id/ban not implemented");
+    setActionMenuId(null);
+  };
+
+  const flagUser = async (id: string) => {
+    toast.error("Endpoint /api/admin/users/:id/flag not implemented");
     setActionMenuId(null);
   };
 

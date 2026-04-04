@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Download, Clock, CheckCircle, MoreVertical, Landmark, Bitcoin, X, AlertTriangle, Eye } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Download, Clock, CheckCircle, MoreVertical, Landmark, Bitcoin, X, AlertTriangle, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
-type PayoutStatus = "PENDING" | "PROCESSING" | "FLAGGED" | "APPROVED" | "REJECTED";
+type PayoutStatus = "pending" | "processing" | "flagged" | "approved" | "rejected";
 
 interface Payout {
   id: string;
@@ -18,26 +20,12 @@ interface Payout {
   notes?: string;
 }
 
-const INITIAL_PAYOUTS: Payout[] = [
-  { id: "#PAY-8921", trader: "Ayo Tobi", email: "ayo.tobi@gmail.com", date: "Mar 31, 2:15 PM", amount: "₦1,250,000", method: "Bank Transfer", methodIcon: Landmark, status: "PENDING" },
-  { id: "#PAY-8920", trader: "Sarah Nwosu", email: "snwosu_fx@yahoo.com", date: "Mar 31, 11:30 AM", amount: "₦2,800,000", method: "USDT (ERC20)", methodIcon: Bitcoin, status: "PROCESSING" },
-  { id: "#PAY-8919", trader: "Alex Sterling", email: "alex.s@tradenet.io", date: "Mar 31, 10:00 AM", amount: "$1,840", method: "USDT (ERC20)", methodIcon: Bitcoin, status: "PENDING" },
-  { id: "#PAY-8918", trader: "Musa Okoro", email: "musa.okoro@outlook.com", date: "Mar 31, 09:05 AM", amount: "₦450,000", method: "Bank Transfer", methodIcon: Landmark, status: "FLAGGED", notes: "IP address mismatch detected." },
-  { id: "#PAY-8917", trader: "Jiro Tanaka", email: "jiro.t@trade.jp", date: "Mar 30, 5:30 PM", amount: "$4,200", method: "USDT (TRC20)", methodIcon: Bitcoin, status: "APPROVED" },
-  { id: "#PAY-8915", trader: "Emeka Bakare", email: "ebakare@fintech.ng", date: "Mar 30, 4:45 PM", amount: "₦950,000", method: "USDT (TRC20)", methodIcon: Bitcoin, status: "APPROVED" },
-  { id: "#PAY-8914", trader: "Ayo Thorne", email: "ayo.thorne@fx.io", date: "Mar 30, 3:00 PM", amount: "$720", method: "Bank Transfer", methodIcon: Landmark, status: "PROCESSING" },
-  { id: "#PAY-8910", trader: "Felix Henderson", email: "felix.h@tradenet.io", date: "Mar 30, 1:30 PM", amount: "₦3,200,000", method: "Bank Transfer", methodIcon: Landmark, status: "APPROVED" },
-  { id: "#PAY-8901", trader: "Elena Vasquez", email: "e.vasquez@invest.io", date: "Mar 29, 10:00 AM", amount: "₦780,000", method: "USDT (ERC20)", methodIcon: Bitcoin, status: "PENDING" },
-  { id: "#PAY-8900", trader: "Kwame Asante", email: "k.asante@trade.gh", date: "Mar 29, 9:15 AM", amount: "$950", method: "USDT (ERC20)", methodIcon: Bitcoin, status: "FLAGGED", notes: "KYC mismatch — country mismatch." },
-  { id: "#PAY-8895", trader: "James Okafor", email: "j.okafor@trader.ng", date: "Mar 29, 8:30 AM", amount: "₦320,000", method: "Bank Transfer", methodIcon: Landmark, status: "REJECTED", notes: "Incomplete KYC verification." },
-];
-
-const statusStyles: Record<PayoutStatus, string> = {
-  PENDING: "chip-warning",
-  PROCESSING: "bg-[#3b82f6]/10 text-[#3b82f6] border border-[#3b82f6]/30",
-  FLAGGED: "chip-danger",
-  APPROVED: "chip-active",
-  REJECTED: "bg-[#7f1d1d]/30 text-[#ff6b6b] border border-[#ff4444]/30",
+const statusStyles: Record<string, string> = {
+  pending: "chip-warning",
+  processing: "bg-[#3b82f6]/10 text-[#3b82f6] border border-[#3b82f6]/30",
+  flagged: "chip-danger",
+  approved: "chip-active",
+  rejected: "bg-[#7f1d1d]/30 text-[#ff6b6b] border border-[#ff4444]/30",
 };
 
 interface ConfirmModal {
@@ -50,7 +38,10 @@ interface PayoutsViewProps {
 }
 
 export default function PayoutsView({ onViewPayout }: PayoutsViewProps = {}) {
-  const [payouts, setPayouts] = useState<Payout[]>(INITIAL_PAYOUTS);
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ pending: 0, processing: 0, approved: 0, flagged: 0 });
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [systemFilter, setSystemFilter] = useState<"ALL" | "NGN" | "USD">("ALL");
@@ -58,27 +49,72 @@ export default function PayoutsView({ onViewPayout }: PayoutsViewProps = {}) {
   const [rejectReason, setRejectReason] = useState("");
   const [detailPayout, setDetailPayout] = useState<Payout | null>(null);
 
-  const filtered = payouts.filter((p) => {
-    const matchSearch = p.trader.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "All Status" || p.status === statusFilter;
-    const matchSystem =
-      systemFilter === "ALL" ||
-      (systemFilter === "NGN" && p.amount.startsWith("₦")) ||
-      (systemFilter === "USD" && p.amount.startsWith("$"));
-    return matchSearch && matchStatus && matchSystem;
-  });
+  const fetchPayouts = async () => {
+    setLoading(true);
+    try {
+      const status = statusFilter !== "All Status" ? statusFilter.toLowerCase() : "";
+      const response = await api.get(`admin/payouts?status=${status}&search=${search}`);
+      const data = response.data;
+      
+      const mapped: Payout[] = data.payouts.map((p: any) => ({
+        id: p.id,
+        trader: p.traderName || "N/A",
+        email: p.traderEmail || "N/A",
+        date: new Date(p.createdAt).toLocaleString(),
+        amount: p.currency === 'NGN' ? `₦${Number(p.amount).toLocaleString()}` : `$${Number(p.amount).toLocaleString()}`,
+        method: p.method || "Bank Transfer",
+        methodIcon: (p.method || "").toLowerCase().includes('usdt') ? Bitcoin : Landmark,
+        status: p.status as PayoutStatus,
+        notes: p.rejectedReason || "",
+      }));
+      
+      setPayouts(mapped);
+      
+      // Basic stats from current list
+      setStats({
+        pending: mapped.filter(p => p.status === 'pending').length,
+        processing: mapped.filter(p => p.status === 'processing').length,
+        approved: mapped.filter(p => p.status === 'approved').length,
+        flagged: mapped.filter(p => p.status === 'flagged').length,
+      });
 
-  const handleApprove = () => {
-    if (!confirmModal) return;
-    setPayouts((prev) => prev.map((p) => p.id === confirmModal.payout.id ? { ...p, status: "APPROVED" as PayoutStatus } : p));
-    setConfirmModal(null);
+    } catch (error) {
+      console.error("Failed to fetch payouts", error);
+      toast.error("Failed to load payouts");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleReject = () => {
+  useEffect(() => {
+    fetchPayouts();
+  }, [statusFilter, search]);
+
+  const handleApprove = async () => {
     if (!confirmModal) return;
-    setPayouts((prev) => prev.map((p) => p.id === confirmModal.payout.id ? { ...p, status: "REJECTED" as PayoutStatus, notes: rejectReason || "Rejected by admin." } : p));
-    setConfirmModal(null);
-    setRejectReason("");
+    try {
+      await api.post(`admin/payouts/${confirmModal.payout.id}/approve`);
+      toast.success("Payout approved");
+      fetchPayouts();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to approve payout");
+    } finally {
+      setConfirmModal(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!confirmModal) return;
+    try {
+      await api.post(`admin/payouts/${confirmModal.payout.id}/reject`, { reason: rejectReason });
+      toast.success("Payout rejected");
+      fetchPayouts();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reject payout");
+    } finally {
+      setConfirmModal(null);
+      setRejectReason("");
+    }
   };
 
   const stats = {

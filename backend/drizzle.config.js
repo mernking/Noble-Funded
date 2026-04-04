@@ -2,6 +2,7 @@ import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
 function isProduction() {
+  console.log("NODE_ENV:", process.env.DATABASE_URL);
   return process.env.NODE_ENV === "production";
 }
 

@@ -2,18 +2,32 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
 import Image from "next/image"
 import CountrySelect from "@/components/country-select"
+import { auth } from "@/lib/api"
+import { toast } from "sonner"
 
 export default function NobleFundedAuth() {
   const [isSignIn, setIsSignIn] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
+  const [loading, setLoading] = useState(false)
+  
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [fullName, setFullName] = useState("")
+  const [country, setCountry] = useState("NG")
+  const [phone, setPhone] = useState("")
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const router = useRouter()
 
   useEffect(() => {
+    if (auth.isAuthenticated()) {
+      router.push("/dashboard")
+    }
+
     const video = videoRef.current
     if (!video) return
     video.muted = true
@@ -29,7 +43,7 @@ export default function NobleFundedAuth() {
       video.addEventListener("canplay", attempt, { once: true })
     }
     return () => video.removeEventListener("canplay", attempt)
-  }, [])
+  }, [router])
 
   function switchToSignIn() {
     setIsSignIn(true)
@@ -43,10 +57,45 @@ export default function NobleFundedAuth() {
     setAgreedToTerms(false)
   }
 
-  function handleSubmit() {
-    // Set mock session so the dashboard auth guard lets users through
-    sessionStorage.setItem("nf_logged_in", "true")
-    router.push("/dashboard")
+  async function handleSubmit() {
+    if (!email || !password) {
+      toast.error("Please fill in all required fields")
+      return
+    }
+
+    setLoading(true)
+    try {
+      if (isSignIn) {
+        await auth.login({ email, password })
+        toast.success("Signed in successfully")
+        // Also set the mock session for now as the layout uses it
+        sessionStorage.setItem("nf_logged_in", "true")
+        router.push("/dashboard")
+      } else {
+        if (!fullName) {
+          toast.error("Please enter your full name")
+          setLoading(false)
+          return
+        }
+        if (!agreedToTerms) {
+          toast.error("Please agree to the terms and conditions")
+          setLoading(false)
+          return
+        }
+        await auth.register({ fullName, email, password, phone, country })
+        toast.success("Account created successfully")
+        sessionStorage.setItem("nf_logged_in", "true")
+        router.push("/dashboard")
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Authentication failed")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleGoogleLogin() {
+    auth.loginWithGoogle()
   }
 
   return (
@@ -234,7 +283,8 @@ export default function NobleFundedAuth() {
               {/* Google button */}
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={handleGoogleLogin}
+                disabled={loading}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -248,18 +298,13 @@ export default function NobleFundedAuth() {
                   color: "#fff",
                   fontSize: 14,
                   fontWeight: 400,
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   marginBottom: 24,
                   boxShadow: "inset 0 1px 0 rgba(0, 255, 220, 0.07), 0 2px 8px rgba(0,0,0,0.3)",
                   fontFamily: "inherit",
                   transition: "background 0.2s",
+                  opacity: loading ? 0.7 : 1
                 }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "rgba(0, 60, 55, 0.6)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "rgba(0, 30, 28, 0.5)")
-                }
               >
                 <svg width="18" height="18" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -280,6 +325,8 @@ export default function NobleFundedAuth() {
                     <input
                       type="text"
                       placeholder="Jane Doe"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
                       style={{
                         width: "100%",
                         padding: "14px 16px",
@@ -299,7 +346,7 @@ export default function NobleFundedAuth() {
                     <label style={{ display: "block", fontSize: 12, fontWeight: 400, color: "#7ab8b0", marginBottom: 8 }}>
                       Country
                     </label>
-                    <CountrySelect />
+                    <CountrySelect value={country} onChange={(val: string) => setCountry(val)} />
                   </div>
                 </div>
               )}
@@ -312,6 +359,8 @@ export default function NobleFundedAuth() {
                 <input
                   type="email"
                   placeholder={isSignIn ? "Email@email.com" : "name@email.com"}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "14px 16px",
@@ -336,6 +385,8 @@ export default function NobleFundedAuth() {
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder={isSignIn ? "Password" : "••••••••"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "14px 44px 14px 16px",
@@ -350,27 +401,25 @@ export default function NobleFundedAuth() {
                     boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)",
                   }}
                 />
-                {isSignIn && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    style={{
-                      position: "absolute",
-                      right: 16,
-                      top: 36,
-                      color: "#849b9f",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 0,
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute",
+                    right: 16,
+                    top: 36,
+                    color: "#849b9f",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
               </div>
 
               {/* Forgot password */}
@@ -428,16 +477,17 @@ export default function NobleFundedAuth() {
               <button
                 type="button"
                 onClick={handleSubmit}
+                disabled={loading}
                 style={{
                   width: "100%",
                   padding: "14px",
-                  background: "linear-gradient(90deg, #00f0ff, #00d4d4)",
+                  background: loading ? "rgba(0, 200, 180, 0.5)" : "linear-gradient(90deg, #00f0ff, #00d4d4)",
                   border: "none",
                   borderRadius: 50,
                   color: "#041c20",
                   fontSize: 15,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   boxShadow: [
                     "0 4px 20px rgba(0, 240, 255, 0.35)",
                     "inset 0 -2px 5px rgba(0,0,0,0.2)",
@@ -448,16 +498,15 @@ export default function NobleFundedAuth() {
                   fontFamily: "inherit",
                   transition: "transform 0.2s, box-shadow 0.2s",
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px)"
-                  e.currentTarget.style.boxShadow = "0 6px 25px rgba(0, 240, 255, 0.5), inset 0 -2px 5px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.5)"
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)"
-                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(0, 240, 255, 0.35), inset 0 -2px 5px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.4)"
-                }}
               >
-                {isSignIn ? "Sign in" : "Create account"}
+                {loading ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <Loader2 className="animate-spin" size={18} />
+                    {isSignIn ? "Signing in..." : "Creating account..."}
+                  </div>
+                ) : (
+                  isSignIn ? "Sign in" : "Create account"
+                )}
               </button>
 
               {/* Toggle link */}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   TrendingUp,
@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   MoreHorizontal,
   Wallet,
+  Loader2,
 } from "lucide-react"
 import {
   AreaChart,
@@ -24,8 +25,9 @@ import {
   Bar,
   Cell,
 } from "recharts"
-import { mockAccounts, mockUser, formatCurrency } from "@/lib/data"
+import { formatCurrency, TradingAccount } from "@/lib/data"
 import { cn } from "@/lib/utils"
+import { auth, api } from "@/lib/api"
 
 // Naira equity curve
 const nairaEquityData = [
@@ -221,9 +223,39 @@ function AccountCard({ account }: { account: typeof mockAccounts[0] }) {
 
 export function OverviewContent() {
   const [accountView, setAccountView] = useState<"naira" | "dollar">("naira")
+  const [accounts, setAccounts] = useState<TradingAccount[]>([])
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
 
-  const nairaAccounts = mockAccounts.filter(a => a.type === "naira")
-  const dollarAccounts = mockAccounts.filter(a => a.type === "dollar")
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [accountsRes, userData] = await Promise.all([
+          api.get("challenges"),
+          auth.getUser()
+        ])
+        setAccounts(accountsRes.data || [])
+        setUser(userData)
+      } catch (err) {
+        console.error("Failed to fetch dashboard data", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin" />
+        <p className="text-sm text-muted-foreground">Loading your dashboard...</p>
+      </div>
+    )
+  }
+
+  const nairaAccounts = accounts.filter(a => a.type === "naira")
+  const dollarAccounts = accounts.filter(a => a.type === "dollar")
   const activeNaira = nairaAccounts.filter(a => a.status !== "failed")
   const activeDollar = dollarAccounts.filter(a => a.status !== "failed")
   const fundedNaira = nairaAccounts.filter(a => a.status === "funded")
@@ -236,9 +268,10 @@ export function OverviewContent() {
   const fundedList = isNaira ? fundedNaira : fundedDollar
   const activeList = isNaira ? activeNaira : activeDollar
 
-  const totalPayouts = isNaira ? 1000000 : 0
-  const bestProfit = isNaira ? "+7.5%" : "+6.2%"
-  const bestAccountLabel = isNaira ? "NF-NG-800K (Funded)" : "NF-USD-10K (Phase 2)"
+  const totalPayouts = user?.totalPayouts || 0
+  const bestAccount = accounts.length > 0 ? accounts.reduce((prev, current) => (prev.currentProfit > current.currentProfit) ? prev : current) : null
+  const bestProfit = bestAccount ? `${bestAccount.currentProfit >= 0 ? "+" : ""}${bestAccount.currentProfit.toFixed(2)}%` : "0.00%"
+  const bestAccountLabel = bestAccount ? `${bestAccount.accountNumber} (${bestAccount.status})` : "No accounts"
   const equityTicker = isNaira ? (v: number) => `₦${(v / 1000).toFixed(0)}k` : (v: number) => `$${(v / 1000).toFixed(1)}k`
 
   return (
@@ -250,7 +283,7 @@ export function OverviewContent() {
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#5eead4] mb-1">Welcome Back</p>
-            <h2 className="text-xl font-bold text-foreground">Good morning, {mockUser.name.split(" ")[0]}</h2>
+            <h2 className="text-xl font-bold text-foreground">Good day, {user?.fullName?.split(" ")[0] || "Trader"}</h2>
             <p className="text-sm text-muted-foreground mt-1.5">
               You have{" "}
               <span className="text-foreground font-semibold">{activeNaira.length} active Naira account{activeNaira.length !== 1 ? "s" : ""}</span>

@@ -2,36 +2,57 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
 import Image from "next/image"
+import { auth } from "@/lib/api"
 
 export default function NobleFundedAdminAuth() {
   const [showPassword, setShowPassword] = useState(false)
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const router = useRouter()
 
   useEffect(() => {
+    if (auth.isAuthenticated()) {
+      router.push("/dashboard")
+    }
+
     const video = videoRef.current
     if (!video) return
     video.muted = true
     
-    // Just try to play if autoplay was blocked by the browser.
-    // Avoid calling .load() as it flushes the buffer and forces a redownload.
     const attempt = () => {
       if (video.paused) {
         video.play().catch(() => {})
       }
     }
     
-    // Slight delay to ensure it catches up after render.
     const timeout = setTimeout(attempt, 150)
     
     return () => clearTimeout(timeout)
-  }, [])
+  }, [router])
 
-  function handleSubmit() {
-    sessionStorage.setItem("nf_admin_logged_in", "true")
-    router.push("/dashboard")
+  async function handleSubmit() {
+    if (!email || !password) {
+      setError("Please fill in all fields")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+    try {
+      await auth.login({ email, password })
+      sessionStorage.setItem("nf_admin_logged_in", "true")
+      router.push("/dashboard")
+    } catch (err: any) {
+      setError(err.message || "Invalid credentials")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -202,6 +223,21 @@ export default function NobleFundedAdminAuth() {
               Sign in to Noble Admin Portal
             </h1>
 
+            {error && (
+              <div style={{ 
+                background: "rgba(239, 68, 68, 0.1)", 
+                border: "1px solid rgba(239, 68, 68, 0.2)", 
+                color: "#ef4444", 
+                padding: "10px", 
+                borderRadius: "8px", 
+                fontSize: "13px", 
+                marginBottom: "20px",
+                textAlign: "center"
+              }}>
+                {error}
+              </div>
+            )}
+
             <div style={{ width: "100%", maxWidth: 380, margin: "0 auto" }}>
               {/* Email */}
               <div style={{ marginBottom: 16 }}>
@@ -211,6 +247,8 @@ export default function NobleFundedAdminAuth() {
                 <input
                   type="email"
                   placeholder="admin@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "14px 16px",
@@ -235,6 +273,8 @@ export default function NobleFundedAdminAuth() {
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "14px 44px 14px 16px",
@@ -274,16 +314,17 @@ export default function NobleFundedAdminAuth() {
               <button
                 type="button"
                 onClick={handleSubmit}
+                disabled={loading}
                 style={{
                   width: "100%",
                   padding: "14px",
-                  background: "linear-gradient(90deg, #00f0ff, #00d4d4)",
+                  background: loading ? "rgba(0, 200, 180, 0.5)" : "linear-gradient(90deg, #00f0ff, #00d4d4)",
                   border: "none",
                   borderRadius: 50,
                   color: "#041c20",
                   fontSize: 15,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   boxShadow: [
                     "0 4px 20px rgba(0, 240, 255, 0.35)",
                     "inset 0 -2px 5px rgba(0,0,0,0.2)",
@@ -293,16 +334,15 @@ export default function NobleFundedAdminAuth() {
                   fontFamily: "inherit",
                   transition: "transform 0.2s, box-shadow 0.2s",
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px)"
-                  e.currentTarget.style.boxShadow = "0 6px 25px rgba(0, 240, 255, 0.5), inset 0 -2px 5px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.5)"
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)"
-                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(0, 240, 255, 0.35), inset 0 -2px 5px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.4)"
-                }}
               >
-                Sign in
+                {loading ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <Loader2 className="animate-spin" size={18} />
+                    Signing in...
+                  </div>
+                ) : (
+                  "Sign in"
+                )}
               </button>
             </div>
           </div>

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Download, Plus, Eye, Edit, TrendingUp, TrendingDown, Trophy, DollarSign, CheckCircle, XCircle, X, Ban } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Download, Plus, Eye, Edit, TrendingUp, TrendingDown, Trophy, DollarSign, CheckCircle, XCircle, X, Ban, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
-type ChallengeStatus = "ACTIVE" | "PASSED" | "FAILED" | "DISABLED";
+type ChallengeStatus = "active" | "passed" | "failed" | "disabled";
 
 interface Challenge {
   id: string;
@@ -21,22 +23,11 @@ interface Challenge {
   phase: string;
 }
 
-const INITIAL_CHALLENGES: Challenge[] = [
-  { id: "#CH-99281", mt5: "882010", user: "Alex Sterling", email: "alex.s@tradenet.io", type: "DOLLAR/PHASE 1", startBal: "$50,000.00", currentBal: "$54,230.15", pl: "+8.46%", plRaw: 8.46, status: "ACTIVE", daysRemaining: 22, phase: "Phase 1" },
-  { id: "#CH-98112", mt5: "881092", user: "Sarah Chen", email: "sarah.c@fintech.com", type: "NAIRA/FUNDED", startBal: "₦10,000,000", currentBal: "₦11,200,000", pl: "+12.0%", plRaw: 12.0, status: "PASSED", daysRemaining: 0, phase: "Funded" },
-  { id: "#CH-97003", mt5: "881554", user: "Marcus Thorne", email: "mthorne@pro.net", type: "DOLLAR/PHASE 2", startBal: "$100,000.00", currentBal: "$94,000.00", pl: "-6.00%", plRaw: -6.0, status: "FAILED", daysRemaining: 0, phase: "Phase 2" },
-  { id: "#CH-96221", mt5: "880341", user: "Ayo Tobi", email: "ayo.t@gmail.com", type: "DOLLAR/PHASE 1", startBal: "$25,000.00", currentBal: "$27,450.00", pl: "+9.8%", plRaw: 9.8, status: "ACTIVE", daysRemaining: 18, phase: "Phase 1" },
-  { id: "#CH-95819", mt5: "879211", user: "Elena Vasquez", email: "e.v@invest.io", type: "NAIRA/PHASE 1", startBal: "₦2,500,000", currentBal: "₦2,380,000", pl: "-4.8%", plRaw: -4.8, status: "ACTIVE", daysRemaining: 9, phase: "Phase 1" },
-  { id: "#CH-95100", mt5: "878901", user: "Jiro Tanaka", email: "jiro.t@trade.jp", type: "DOLLAR/FUNDED", startBal: "$200,000.00", currentBal: "$218,400.00", pl: "+9.2%", plRaw: 9.2, status: "PASSED", daysRemaining: 0, phase: "Funded" },
-  { id: "#CH-94500", mt5: "878000", user: "Emeka Bakare", email: "emeka@ng.io", type: "NAIRA/PHASE 2", startBal: "₦5,000,000", currentBal: "₦5,310,000", pl: "+6.2%", plRaw: 6.2, status: "ACTIVE", daysRemaining: 14, phase: "Phase 2" },
-  { id: "#CH-93111", mt5: "877654", user: "Kwame Asante", email: "k.asante@trade.gh", type: "DOLLAR/PHASE 1", startBal: "$10,000.00", currentBal: "$9,020.00", pl: "-9.8%", plRaw: -9.8, status: "DISABLED", daysRemaining: 0, phase: "Phase 1" },
-];
-
-const statusStyles: Record<ChallengeStatus, string> = {
-  ACTIVE: "chip-active",
-  PASSED: "bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30",
-  FAILED: "chip-danger",
-  DISABLED: "chip-neutral",
+const statusStyles: Record<string, string> = {
+  active: "chip-active",
+  passed: "bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30",
+  failed: "chip-danger",
+  disabled: "chip-neutral",
 };
 
 interface ChallengesViewProps {
@@ -44,7 +35,10 @@ interface ChallengesViewProps {
 }
 
 export default function ChallengesView({ onViewChallenge }: ChallengesViewProps = {}) {
-  const [challenges, setChallenges] = useState<Challenge[]>(INITIAL_CHALLENGES);
+  const [allChallenges, setAllChallenges] = useState<Challenge[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ managedCapital: "0", activeCount: 0, successRate: "0%", pendingPayouts: "0" });
+
   const [statusFilter, setStatusFilter] = useState("All Statuses");
   const [typeFilter, setTypeFilter] = useState("All Types");
   const [systemFilter, setSystemFilter] = useState<"ALL" | "NGN" | "USD">("ALL");
@@ -53,14 +47,61 @@ export default function ChallengesView({ onViewChallenge }: ChallengesViewProps 
   const [viewChallenge, setViewChallenge] = useState<Challenge | null>(null);
   const [editChallenge, setEditChallenge] = useState<Challenge | null>(null);
 
-  const filtered = challenges.filter((c) => {
-    const matchStatus = statusFilter === "All Statuses" || c.status === statusFilter;
+  const fetchChallenges = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get(`admin/challenges?status=${statusFilter !== 'All Statuses' ? statusFilter.toLowerCase() : ''}`);
+      const data = response.data;
+      
+      const mapped: Challenge[] = data.challenges.map((c: any) => ({
+        id: c.id,
+        mt5: c.mt5Login || "N/A",
+        user: c.userName || "N/A",
+        email: c.userEmail || "N/A",
+        type: `${c.accountType.toUpperCase()}/PHASE ${c.phase}`,
+        startBal: c.accountType === 'naira' ? `₦${Number(c.startingBalance).toLocaleString()}` : `$${Number(c.startingBalance).toLocaleString()}`,
+        currentBal: c.accountType === 'naira' ? `₦${Number(c.currentBalance).toLocaleString()}` : `$${Number(c.currentBalance).toLocaleString()}`,
+        pl: `${(((Number(c.currentBalance) - Number(c.startingBalance)) / Number(c.startingBalance)) * 100).toFixed(2)}%`,
+        plRaw: ((Number(c.currentBalance) - Number(c.startingBalance)) / Number(c.startingBalance)) * 100,
+        status: c.status as ChallengeStatus,
+        daysRemaining: c.durationDays || 0,
+        phase: `Phase ${c.phase}`,
+      }));
+      
+      setAllChallenges(mapped);
+      
+      // Compute basic stats
+      const totalCap = data.challenges.reduce((sum: number, c: any) => sum + Number(c.startingBalance), 0);
+      const active = data.challenges.filter((c: any) => c.status === 'active').length;
+      const passed = data.challenges.filter((c: any) => c.status === 'passed').length;
+      const rate = data.challenges.length > 0 ? ((passed / data.challenges.length) * 100).toFixed(1) : "0";
+      
+      setStats({
+        managedCapital: `₦${totalCap.toLocaleString()}`,
+        activeCount: active,
+        successRate: `${rate}%`,
+        pendingPayouts: "0", // Need payouts API
+      });
+
+    } catch (error) {
+      console.error("Failed to fetch challenges", error);
+      toast.error("Failed to load challenges");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChallenges();
+  }, [statusFilter, systemFilter]);
+
+  const filtered = allChallenges.filter((c) => {
     const matchType = typeFilter === "All Types" || c.type.includes(typeFilter);
     const matchSystem =
       systemFilter === "ALL" ||
       (systemFilter === "NGN" && c.type.includes("NAIRA")) ||
       (systemFilter === "USD" && c.type.includes("DOLLAR"));
-    return matchStatus && matchType && matchSystem;
+    return matchType && matchSystem;
   });
 
   const disableChallenge = (id: string) => {

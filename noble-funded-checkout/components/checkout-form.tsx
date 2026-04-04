@@ -1,6 +1,5 @@
 "use client"
 
-import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,8 +8,10 @@ import { Card } from "@/components/ui/card"
 import {
   User, Lock, CheckCircle, Mail, Loader2, MapPin, Phone,
   ChevronDown, Search, Check, Shield, Bitcoin, ExternalLink,
-  AlertCircle,
+  AlertCircle, Eye, EyeOff,
 } from "lucide-react"
+import { auth, api } from "@/lib/api"
+import { toast } from "sonner"
 
 interface CheckoutFormProps {
   totalPrice: number
@@ -461,9 +462,12 @@ function TrustBadges() {
 export default function CheckoutForm({ totalPrice, currency, productDetails }: CheckoutFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
 
   const [email, setEmail] = useState("")
   const [verificationCode, setVerificationCode] = useState("")
@@ -487,6 +491,29 @@ export default function CheckoutForm({ totalPrice, currency, productDetails }: C
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("flutterwave")
   const [agreedToTerms, setAgreedToTerms] = useState(false)
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (auth.isAuthenticated()) {
+        try {
+          const user = await auth.getCurrentUser()
+          if (user) {
+            setIsAuthenticated(true)
+            setIsEmailVerified(true)
+            setEmail(user.email)
+            const names = user.fullName.split(" ")
+            setFirstName(names[0] || "")
+            setLastName(names.slice(1).join(" ") || "")
+            setPhoneNumber(user.phone || "")
+            // Optionally set other fields if they exist in user profile
+          }
+        } catch (err) {
+          console.error("Auth check failed", err)
+        }
+      }
+    }
+    checkAuth()
+  }, [])
+
   const formatPrice = (price: number) =>
     currency.id === "ngn" ? `₦${price.toLocaleString()}` : `$${price.toFixed(2)}`
 
@@ -504,28 +531,83 @@ export default function CheckoutForm({ totalPrice, currency, productDetails }: C
     }
     setIsSendingCode(true)
     setVerificationError("")
-    setTimeout(() => { setIsSendingCode(false); setCodeSent(true) }, 1500)
+    try {
+      await api.post("auth/send-code", { email })
+      setCodeSent(true)
+      toast.success("Verification code sent to your email")
+    } catch (err: any) {
+      setVerificationError(err.message || "Failed to send code")
+      toast.error(err.message || "Failed to send code")
+    } finally {
+      setIsSendingCode(false)
+    }
   }
 
-  const handleVerifyCode = () => {
+  const handleVerifyCode = async () => {
     if (verificationCode.length !== 6) {
       setVerificationError("Please enter the 6-digit code")
       return
     }
-    setIsEmailVerified(true)
-    setVerificationError("")
+    try {
+      await api.post("auth/verify-code", { email, code: verificationCode })
+      setIsEmailVerified(true)
+      setVerificationError("")
+      toast.success("Email verified successfully")
+    } catch (err: any) {
+      setVerificationError(err.message || "Invalid verification code")
+      toast.error(err.message || "Invalid verification code")
+    }
   }
 
   const handleApplyDiscount = () => {
     if (discountCode.length > 0) setDiscountApplied(true)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isEmailVerified) { setVerificationError("Please verify your email first"); return }
     if (!agreedToTerms) return
+    
     setIsSubmitting(true)
-    setTimeout(() => { setIsSubmitting(false); setIsComplete(true) }, 1500)
+    try {
+      // 1. If not authenticated, register first
+      if (!isAuthenticated) {
+        if (!password) {
+          toast.error("Please set a password for your account")
+          setIsSubmitting(false)
+          return
+        }
+        await auth.register({
+          fullName: `${firstName} ${lastName}`,
+          email,
+          password,
+          phone: `${phoneDialCode}${phoneNumber}`,
+          country: selectedCountry,
+        })
+        setIsAuthenticated(true)
+      }
+
+      // 2. Initiate payment
+      const response = await api.post("payments/initiate", {
+        challengeType: currency.id,
+        amount: totalPrice,
+        currency: currency.id.toUpperCase(),
+        metadata: {
+          accountSize: productDetails.accountSize,
+          tier: productDetails.accountSize, // We'll handle this in backend
+        }
+      })
+
+      if (response.data?.paymentLink) {
+        // Redirect to Flutterwave
+        window.location.href = response.data.paymentLink
+      } else {
+        throw new Error("Failed to generate payment link")
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Checkout failed")
+      setIsSubmitting(false)
+    }
   }
 
   const canSubmit = isEmailVerified && agreedToTerms && !isSubmitting
@@ -583,12 +665,36 @@ export default function CheckoutForm({ totalPrice, currency, productDetails }: C
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="firstName">First Name</Label>
-              <Input id="firstName" placeholder="John" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+              <Input id="firstName" placeholder="John" value={firstName} onChange={(e) => setFirstName(e.target.value)} required disabled={isAuthenticated} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lastName">Last Name</Label>
-              <Input id="lastName" placeholder="Doe" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+              <Input id="lastName" placeholder="Doe" value={lastName} onChange={(e) => setLastName(e.target.value)} required disabled={isAuthenticated} />
             </div>
+            {!isAuthenticated && (
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="password">Set Account Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Minimum 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">This password will be used to log in to your Noble Funded dashboard.</p>
+              </div>
+            )}
           </div>
         </section>
 

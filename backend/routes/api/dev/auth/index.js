@@ -508,4 +508,70 @@ export default async function authRoutes(fastify) {
       return fastify.ok(reply, safeUser);
     },
   );
+
+  // POST /api/auth/send-code - Send verification code to email
+  fastify.post("/send-code", async (request, reply) => {
+    const { email } = request.body || {};
+    if (!email) {
+      return fastify.fail(reply, 422, "VALIDATION_ERROR", "Email is required.");
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    const db = fastify.db;
+    
+    // Check if user exists
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    
+    if (user) {
+      await db.update(users).set({ verificationCode: code, verificationCodeExpiry: expiry }).where(eq(users.id, user.id));
+    } else {
+      // Create a temporary user or just send the code. 
+      // For now, let's allow sending code even if user doesn't exist (for checkout registration)
+      // We can store it in a separate table if we want, but let's just use activity logs or a new table if needed.
+      // Actually, let's just use the users table and create a placeholder user if needed, or just send it and verify against it.
+      // Better: Create a placeholder user with role 'guest' if they don't exist.
+      await db.insert(users).values({
+        email: email.toLowerCase(),
+        fullName: "Guest",
+        role: "trader", // will be updated on register
+        status: "active",
+        verificationCode: code,
+        verificationCodeExpiry: expiry,
+      }).onConflictDoUpdate({
+        target: users.email,
+        set: { verificationCode: code, verificationCodeExpiry: expiry }
+      });
+    }
+
+    // Send email
+    try {
+      await emailService.sendVerificationCode(email, code);
+      return fastify.ok(reply, { message: "Verification code sent." });
+    } catch (err) {
+      fastify.log.error(err);
+      return fastify.fail(reply, 500, "EMAIL_ERROR", "Failed to send verification code.");
+    }
+  });
+
+  // POST /api/auth/verify-code - Verify the code sent to email
+  fastify.post("/verify-code", async (request, reply) => {
+    const { email, code } = request.body || {};
+    if (!email || !code) {
+      return fastify.fail(reply, 422, "VALIDATION_ERROR", "Email and code are required.");
+    }
+
+    const db = fastify.db;
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+
+    if (!user || user.verificationCode !== code || !user.verificationCodeExpiry || new Date() > user.verificationCodeExpiry) {
+      return fastify.fail(reply, 400, "INVALID_CODE", "Invalid or expired verification code.");
+    }
+
+    // Mark as verified
+    await db.update(users).set({ emailVerified: true, verificationCode: null, verificationCodeExpiry: null }).where(eq(users.id, user.id));
+
+    return fastify.ok(reply, { message: "Email verified successfully." });
+  });
 }

@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { UserPlus, Search, Shield, Ban, Eye } from "lucide-react";
+import { useState, useEffect } from "react";
+import { UserPlus, Search, Shield, Ban, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
-const staff = [
-  { id: "NT-8829-X", name: "Alexander Thorne", role: "Admin", status: "VERIFIED", activity: "2 mins ago", ip: "192.168.1.44" },
-  { id: "NT-4421-Y", name: "Elena Rodriguez", role: "Developer", status: "VERIFIED", activity: "14 mins ago", ip: "45.12.98.22" },
-  { id: "NT-0912-C", name: "Sarah Jenkins", role: "Compliance", status: "FLAGGED", activity: "1 hour ago", ip: "82.33.11.04" },
-  { id: "NT-3301-S", name: "Marcus Chen", role: "Support", status: "SUSPENDED", activity: "3 days ago", ip: "22.109.4.19" },
-  { id: "NT-5512-M", name: "Priya Sharma", role: "Marketing", status: "VERIFIED", activity: "Just now", ip: "104.22.8.91" },
-];
+interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  activity: string;
+  ip: string;
+}
 
 const statusStyles: Record<string, string> = {
-  VERIFIED: "chip-active",
-  FLAGGED: "chip-warning",
-  SUSPENDED: "chip-danger",
+  active: "chip-active",
+  flagged: "chip-warning",
+  suspended: "chip-danger",
 };
 
 interface TeamViewProps {
@@ -23,9 +26,66 @@ interface TeamViewProps {
 }
 
 export default function TeamView({ onViewStaff }: TeamViewProps = {}) {
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newMember, setNewMember] = useState({ name: "", role: "Support", email: "" });
+  const [newMember, setNewMember] = useState({ name: "", role: "support", email: "", password: "" });
+
+  const fetchTeam = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("admin/team");
+      const mapped: StaffMember[] = response.data.map((s: any) => ({
+        id: s.id,
+        name: s.fullName,
+        role: s.role.charAt(0).toUpperCase() + s.role.slice(1),
+        status: s.status,
+        activity: "N/A", // needs lastLogin from backend
+        ip: "N/A",
+      }));
+      setStaff(mapped);
+    } catch (err) {
+      console.error("Failed to fetch team", err);
+      toast.error("Failed to load team members");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeam();
+  }, []);
+
+  const handleAddMember = async () => {
+    if (!newMember.email || !newMember.name || !newMember.password) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    try {
+      await api.post("admin/team/add", {
+        fullName: newMember.name,
+        email: newMember.email,
+        role: newMember.role.toLowerCase(),
+        password: newMember.password
+      });
+      toast.success("Team member added");
+      setShowAddModal(false);
+      fetchTeam();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add team member");
+    }
+  };
+
+  const removeMember = async (id: string) => {
+    try {
+      await api.delete(`admin/team/${id}`);
+      toast.success("Team member removed");
+      fetchTeam();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove team member");
+    }
+  };
 
   const filtered = staff.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -184,13 +244,17 @@ export default function TeamView({ onViewStaff }: TeamViewProps = {}) {
               <div>
                 <label className="text-[10px] tracking-widest text-[#b9cbc2]/50 uppercase mb-1.5 block">Role</label>
                 <select value={newMember.role} onChange={(e) => setNewMember({ ...newMember, role: e.target.value })} className="w-full bg-[#0b2f2d]/60 border border-[rgba(0,255,204,0.1)] rounded-lg px-3 py-2 text-sm text-white">
-                  {["Admin", "Compliance", "Support", "Marketing", "Developer"].map((r) => <option key={r}>{r}</option>)}
+                  {["compliance", "support", "marketing", "developer"].map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="text-[10px] tracking-widest text-[#b9cbc2]/50 uppercase mb-1.5 block">Temporary Password</label>
+                <input type="password" value={newMember.password} onChange={(e) => setNewMember({ ...newMember, password: e.target.value })} className="input-field w-full bg-[#0b2f2d]/40 border border-[rgba(0,255,204,0.1)] rounded-lg px-3 py-2 text-sm text-white" placeholder="••••••••" />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 rounded-xl border border-[rgba(0,255,204,0.2)] text-sm text-[#b9cbc2]">Cancel</button>
-              <button onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 rounded-xl bg-[#00ffcc] text-[#001716] text-sm font-bold btn-primary">Add Member</button>
+              <button onClick={handleAddMember} className="flex-1 py-2.5 rounded-xl bg-[#00ffcc] text-[#001716] text-sm font-bold btn-primary">Add Member</button>
             </div>
           </div>
         </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, X } from "lucide-react";
+import { LogOut, X, Loader2 } from "lucide-react";
 import { Role, ROLE_CONFIGS } from "@/lib/types";
 import Sidebar from "@/components/admin/Sidebar";
 import Header from "@/components/admin/Header";
+import { auth } from "@/lib/api";
 
 // ─── Super Admin Views ─────────────────────────────────────────────────────
 import SuperAdminOverview from "@/components/views/super-admin/Overview";
@@ -127,11 +128,48 @@ function SignOutModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState<Role>("Super Admin");
-  const [activeTab, setActiveTab] = useState<string>(ROLE_CONFIGS["Super Admin"].defaultTab);
+  const [loading, setLoading] = useState(true);
+  
+  const [activeTab, setActiveTab] = useState<string>("overview");
   const [activeTicketId, setActiveTicketId] = useState<string>("TKT-5021");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signOutModalOpen, setSignOutModalOpen] = useState(false);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      if (!auth.isAuthenticated()) {
+        router.push("/login");
+        return;
+      }
+      
+      try {
+        const userData = await auth.getUser();
+        setUser(userData);
+        
+        // Map backend role to frontend Role type
+        const roleMap: Record<string, Role> = {
+          super_admin: "Super Admin",
+          compliance: "Compliance",
+          support: "Support",
+          marketing: "Marketing",
+          developer: "Developer"
+        };
+        
+        const mappedRole = roleMap[userData.role] || "Super Admin";
+        setRole(mappedRole);
+        setActiveTab(ROLE_CONFIGS[mappedRole].defaultTab);
+      } catch (err) {
+        console.error("Auth init failed", err);
+        router.push("/login");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    initAuth();
+  }, [router]);
 
   // ── Detail page state ───────────────────────────────────────────────────
   const [detailType, setDetailType] = useState<"trader" | "challenge" | "payout" | "affiliate" | "staff" | null>(null);
@@ -139,6 +177,7 @@ export default function AdminDashboard() {
   const [prevTab, setPrevTab] = useState<string>("");
 
   const handleRoleChange = (newRole: Role) => {
+    // Only allowed if super admin, but let's keep the UI functionality for now
     setRole(newRole);
     setActiveTab(ROLE_CONFIGS[newRole].defaultTab);
     setMobileMenuOpen(false);
@@ -152,7 +191,8 @@ export default function AdminDashboard() {
     setMobileMenuOpen(false);
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    await auth.logout();
     setSignOutModalOpen(false);
     sessionStorage.removeItem("nf_admin_logged_in");
     router.push("/login");
@@ -355,6 +395,14 @@ export default function AdminDashboard() {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#001716]">
+        <Loader2 className="w-10 h-10 text-[#00ffcc] animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen bg-[var(--surface)]" style={{ isolation: "isolate" }}>
       {/* Sidebar */}
@@ -365,6 +413,7 @@ export default function AdminDashboard() {
         onSignOut={() => setSignOutModalOpen(true)}
         isMobileOpen={mobileMenuOpen}
         onMobileClose={() => setMobileMenuOpen(false)}
+        user={user}
       />
 
       {/* Main content — overflow visible so header dropdowns aren't clipped */}
