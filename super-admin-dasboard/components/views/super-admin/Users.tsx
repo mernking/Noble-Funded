@@ -122,6 +122,16 @@ export default function UsersView({ onViewTrader }: UsersViewProps = {}) {
     setActionMenuId(null);
   };
 
+  const filtered = allUsers.filter((user) => {
+    const matchSearch = !search || 
+      user.name.toLowerCase().includes(search.toLowerCase()) || 
+      user.email.toLowerCase().includes(search.toLowerCase()) ||
+      user.id.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "All Status" || user.status.toLowerCase() === statusFilter.toLowerCase();
+    const matchAccount = accountFilter === "All Types" || user.type === accountFilter;
+    return matchSearch && matchStatus && matchAccount;
+  });
+
   return (
     <div className="page-fade space-y-5">
       {/* Header */}

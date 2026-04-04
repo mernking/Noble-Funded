@@ -117,12 +117,10 @@ export default function PayoutsView({ onViewPayout }: PayoutsViewProps = {}) {
     }
   };
 
-  const stats = {
-    pending: payouts.filter((p) => p.status === "PENDING").length,
-    processing: payouts.filter((p) => p.status === "PROCESSING").length,
-    approved: payouts.filter((p) => p.status === "APPROVED").length,
-    flagged: payouts.filter((p) => p.status === "FLAGGED").length,
-  };
+  const filtered = payouts.filter((p) => {
+    const matchSearch = p.trader.toLowerCase().includes(search.toLowerCase()) || p.email.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase());
+    return matchSearch;
+  });
 
   return (
     <div className="page-fade space-y-5">

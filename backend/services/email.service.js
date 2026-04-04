@@ -1,4 +1,7 @@
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // Create transporter using Mailtrap
 const transporter = nodemailer.createTransport({
@@ -58,7 +61,7 @@ export const emailService = {
   },
 
   async sendPasswordResetEmail(email, name, token) {
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
     return sendEmail({
@@ -295,8 +298,11 @@ export const emailService = {
   },
 
   async sendAdminInviteEmail(email, name, password, role) {
-    const adminUrl = process.env.ADMIN_URL || "http://localhost:5174";
-    const roleDisplay = role.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase());
+    console.log(`Sending admin invite email to ${email} with role ${role}`);
+    const adminUrl = process.env.ADMIN_URL || "http://localhost:3001";
+    const roleDisplay = role
+      .replace("_", " ")
+      .replace(/\b\w/g, (l) => l.toUpperCase());
 
     return sendEmail({
       to: email,
