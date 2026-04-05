@@ -1,16 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Globe, Server, Zap, Shield, Activity, AlertCircle, CheckCircle, RefreshCw, Lock, Unlock } from "lucide-react";
-
-const regions = [
-  { name: "Lagos, Nigeria", code: "LAG", users: 18420, latency: "12ms", status: "online", load: 72 },
-  { name: "London, UK", code: "LDN", users: 9840, latency: "8ms", status: "online", load: 45 },
-  { name: "New York, US", code: "NYC", users: 7210, latency: "22ms", status: "online", load: 38 },
-  { name: "Dubai, UAE", code: "DXB", users: 6480, latency: "18ms", status: "online", load: 55 },
-  { name: "Johannesburg, SA", code: "JHB", users: 4120, latency: "28ms", status: "warning", load: 88 },
-  { name: "Singapore", code: "SGP", users: 2230, latency: "34ms", status: "online", load: 30 },
-];
+import { api } from "@/lib/api";
 
 const systemSwitches = [
   { id: "trading", label: "Live Trading", desc: "Enable/disable all live trading globally", on: true, critical: true },
@@ -22,22 +14,59 @@ const systemSwitches = [
 ];
 
 export default function GlobalCommand() {
-  const [switches, setSwitches] = useState(
-    systemSwitches.reduce((acc, s) => ({ ...acc, [s.id]: s.on }), {} as Record<string, boolean>)
-  );
+  const [switches, setSwitches] = useState<Record<string, boolean>>({});
+  const [regions, setRegions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [executing, setExecuting] = useState(false);
 
-  const handleToggle = (id: string, isCritical: boolean) => {
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get("admin/command");
+        const data = response.data;
+        
+        if (data?.switches) {
+          setSwitches(data.switches);
+        } else {
+          setSwitches(systemSwitches.reduce((acc, s) => ({ ...acc, [s.id]: s.on }), {}));
+        }
+        
+        if (data?.regions) {
+          setRegions(data.regions);
+        }
+      } catch (err) {
+        console.error("Failed to fetch command data", err);
+        setSwitches(systemSwitches.reduce((acc, s) => ({ ...acc, [s.id]: s.on }), {}));
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const handleToggle = async (id: string, isCritical: boolean) => {
     if (isCritical) {
       setConfirmId(id);
     } else {
-      setSwitches(prev => ({ ...prev, [id]: !prev[id] }));
+      try {
+        await api.post("admin/command/execute", { action: "toggle", key: id, value: !switches[id] });
+        setSwitches(prev => ({ ...prev, [id]: !prev[id] }));
+      } catch (err) {
+        console.error("Failed to toggle switch", err);
+      }
     }
   };
 
-  const confirmToggle = () => {
+  const confirmToggle = async () => {
     if (confirmId) {
-      setSwitches(prev => ({ ...prev, [confirmId]: !prev[confirmId] }));
+      try {
+        await api.post("admin/command/execute", { action: "toggle", key: confirmId, value: !switches[confirmId] });
+        setSwitches(prev => ({ ...prev, [confirmId]: !prev[confirmId] }));
+      } catch (err) {
+        console.error("Failed to toggle switch", err);
+      }
       setConfirmId(null);
     }
   };

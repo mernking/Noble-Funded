@@ -1,38 +1,78 @@
 # Noble-Funded
 
-what is left to be done in the project is to update the api and link it with 
-   the current frontend system that has been built.                             
-                                                                                
-   read @Noble_Funded_Technical_Requirements.md so you have proper clearity of  
-   the project information and scop, i made some changes while i was            
-   developing, so i used fastify for the backend file based routing.            
-   i used postgress db and superbase for both user auth and admin auth with     
-   google auth.                                                                 
-   @admin/app/routes/login.jsx and @frontend/app/routes/login.jsx you will see  
-   both systems their and how it connected to the api @admin/app/lib/api.js     
-   @frontend/app/lib/api.js and use auth system fully for the api calles and in 
-   the admin you will notice in the layout @admin/app/routes/layout.jsx it has  
-   a role based acess.  
+## Comprehensive Integration Plan
 
+Based on my analysis of the codebase, here's a detailed plan to connect the Super Admin Dashboard to the live backend API:
 
+### **Backend API Available**
+The backend already provides well-structured API endpoints:
+- `GET /api/dev/admin/dashboard/stats` - Overview KPIs (✓ already integrated in Overview.tsx)
+- `GET /api/dev/admin/users` - User listing with filters, ban/flag/unban/unflag actions
+- `GET /api/dev/admin/challenges` - Challenge management
+- `GET /api/dev/admin/payouts` - Payout management
+- `GET /api/dev/admin/revenue` - Revenue data
+- `GET /api/dev/admin/settings` - System settings
+- `GET /api/dev/admin/team` - Team member management
+- `GET /api/dev/admin/support` - Support tickets
+- `GET /api/dev/admin/activity-logs` - Activity logs
 
- what i need you to do with the information above is to make api.js/api.ts    
-   utilify file in the noble-funded-checkout super-admin-dasboard           
-   dashboard.noblefunded becuase they are the updated code base for the       
-   frontend and it looks nice, all you need to do is to plug it with the        
-   backend backend the checkout will be using flutterwave, and remember the   
-   checkout is standing alone, the dashboard is standing alone, so keep a       
-   system in place that will keep track so that when traders purchase a         
-   challend it will be added to their own account and not just waste their      
-   money.                                                                       
-                                                                                
-   for api's required by noble-funded-checkout noble-funded-checkout       
-   super-admin-dasboard make them in backend and make sure it follows the     
-   system in place api/version/normalNAme if it admin                           
-   api/version/admin/normalName current is dev if you read the                  
-   @admin/app/lib/api.js and @frontend/app/lib/api.js you will see the why the  
-   system allow for api version controle easily. and the three frontend where   
-   you will be working some have demo data and interface so you can use their   
-   structure to update @backend/db/schema.js so it remains consistent and CRUD  
-   system accurately without error                                              
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+### **Views Requiring Updates (25 files)**
+
+**Tier 1 - High Priority (Core Admin Functions):**
+1. **Overview.tsx** - Already fetching stats, needs: revenue chart data, challenge breakdown, user growth, activity feed from API
+2. **Users.tsx** - Already fetching, needs: proper pagination, status filters
+3. **Challenges.tsx** - No API, needs complete integration
+4. **Payouts.tsx** - Already fetching, needs: approve/reject actions
+
+**Tier 2 - Secondary (Business Functions):**
+5. Revenue.tsx
+6. Affiliates.tsx
+7. Leaderboard.tsx
+8. Certificates.tsx
+9. KYC.tsx
+10. Team.tsx
+11. ActivityLogs.tsx
+
+**Tier 3 - Settings & Configuration:**
+12. Settings.tsx
+13. Rules.tsx
+14. RiskEngine.tsx
+15. PromoCodes.tsx
+16. PaymentGateway.tsx
+17. BrokerAPI.tsx
+18. FXRateEngine.tsx
+19. RuleConfigMatrix.tsx
+
+**Tier 4 - Advanced/Reports:**
+20. ChallengePlans.tsx
+21. MT5Accounts.tsx
+22. TraderPerformance.tsx
+23. AdvancedReporting.tsx
+24. GlobalCommand.tsx
+25. StaffPermissions.tsx
+
+### **Implementation Approach**
+
+**Phase 1: Core Data Integration**
+- Update each view to fetch data from corresponding API endpoint
+- Replace all hardcoded arrays (revenueData, challengeData, etc.) with API calls
+- Implement loading states and error handling
+
+**Phase 2: Action Integration**
+- Connect all buttons (approve/reject, ban/unban, enable/disable) to API actions
+- Add proper toast notifications for actions
+
+**Phase 3: Polish & Optimization**
+- Add proper pagination
+- Implement search/filter functionality
+- Remove remaining mock data
+
+### **Schema Match**
+The current schema (`backend/db/schema.js`) matches well with the API requirements. The main tables (users, challenges, payouts, transactions, activityLogs) are properly defined.
+
+### **Role-Based Access**
+Already implemented in backend via `requireRole` decorator. Frontend needs to ensure proper UI rendering based on user role (already handled in page.tsx).
+
+---
+
+**This is a large-scale task affecting 25+ files. Should I proceed with the implementation? I can work through it systematically view by view.**

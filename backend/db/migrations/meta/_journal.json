@@ -22,6 +22,13 @@
       "when": 1775270710153,
       "tag": "0002_goofy_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775348828926,
+      "tag": "0003_conscious_elektra",
+      "breakpoints": true
     }
   ]
 }

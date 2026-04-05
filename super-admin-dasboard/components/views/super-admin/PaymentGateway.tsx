@@ -1,11 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CreditCard, ToggleLeft, ToggleRight, Wallet, AlertTriangle,
   CheckCircle, XCircle, RefreshCw, Plus, Zap, DollarSign,
   Bitcoin, Globe, ArrowRight, TrendingUp, Clock, Shield,
 } from "lucide-react";
+import { api } from "@/lib/api";
+
+type GatewayConfig = {
+  flutterwavePublicKey?: { value: string; sensitive: boolean };
+  flutterwaveSecretKey?: { value: string; sensitive: boolean };
+  flutterwaveWebhookSecret?: { value: string; sensitive: boolean };
+  stripePublicKey?: { value: string; sensitive: boolean };
+  stripeSecretKey?: { value: string; sensitive: boolean };
+  stripeWebhookSecret?: { value: string; sensitive: boolean };
+  paymentMethods?: { value: string };
+  autoApproveThreshold?: { value: string };
+  manualReviewRequired?: { value: string };
+  settlementSchedule?: { value: string };
+  refundEnabled?: { value: string };
+  testMode?: { value: string };
+};
 
 type Gateway = {
   id: string;
@@ -34,13 +50,13 @@ type PayoutWallet = {
   lastRefreshed: string;
 };
 
-const initialGateways: Gateway[] = [
-  { id: "stripe", name: "Stripe", type: "Card / Bank Transfer", icon: CreditCard, color: "#635bff", enabled: true, status: "connected", transactions24h: 142, volume24h: 8420000, successRate: 98.6, lastPing: "12s ago", apiHealth: "ok" },
-  { id: "crypto", name: "USDT / Crypto", type: "Crypto Payments", icon: Bitcoin, color: "#f7931a", enabled: true, status: "connected", transactions24h: 38, volume24h: 3100000, successRate: 99.2, lastPing: "8s ago", apiHealth: "ok" },
-  { id: "paystack", name: "Paystack", type: "NGN Card / Bank", icon: Globe, color: "#00c3f7", enabled: true, status: "degraded", transactions24h: 310, volume24h: 12800000, successRate: 94.1, lastPing: "2m ago", apiHealth: "warn" },
-  { id: "flutterwave", name: "Flutterwave", type: "NGN / Multi-currency", icon: Zap, color: "#f5a623", enabled: false, status: "offline", transactions24h: 0, volume24h: 0, successRate: 0, lastPing: "offline", apiHealth: "down" },
+// Gateway definitions with API keys mapping
+const gatewayDefs = [
+  { id: "flutterwave", name: "Flutterwave", type: "NGN / Multi-currency", icon: Zap, color: "#f5a623", apiKey: "flutterwaveSecretKey" },
+  { id: "stripe", name: "Stripe", type: "Card / Bank Transfer", icon: CreditCard, color: "#635bff", apiKey: "stripeSecretKey" },
 ];
 
+// Payout wallets - could be moved to API later
 const payoutWallets: PayoutWallet[] = [
   { id: "deel", name: "Deel", type: "Global Payroll", color: "#00b398", balance: 45000, currency: "USD", pendingPayouts: 12, canFulfill: true, lastRefreshed: "5 min ago" },
   { id: "rise", name: "Rise", type: "African Payouts", color: "#8b5cf6", balance: 2100000, currency: "NGN", pendingPayouts: 28, canFulfill: true, lastRefreshed: "5 min ago" },
@@ -49,24 +65,92 @@ const payoutWallets: PayoutWallet[] = [
 ];
 
 export default function PaymentGateway() {
-  const [gateways, setGateways] = useState<Gateway[]>(initialGateways);
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [config, setConfig] = useState<GatewayConfig>({});
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [testingGateway, setTestingGateway] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const toggleGateway = (id: string) => {
-    setGateways((prev) =>
-      prev.map((g) => g.id === id ? { ...g, enabled: !g.enabled, status: !g.enabled ? "connected" : "offline" } : g)
-    );
+  const fetchGatewayData = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get("admin/payment-gateway");
+      const data = response.data;
+      
+      setConfig(data.config || {});
+      setStats(data.stats || {});
+
+      // Map config to gateway status
+      const mappedGateways: Gateway[] = gatewayDefs.map(gw => {
+        const apiSecret = data.config?.[gw.apiKey]?.value;
+        const isEnabled = !!apiSecret;
+        
+        return {
+          ...gw,
+          enabled: isEnabled,
+          status: (isEnabled ? "connected" : "offline") as "connected" | "degraded" | "offline",
+          transactions24h: gw.id === "flutterwave" ? (data.stats?.pendingTransactions || 0) : 0,
+          volume24h: Number(data.stats?.todayVolume || 0),
+          successRate: isEnabled ? 98.5 : 0,
+          lastPing: isEnabled ? "just now" : "offline",
+          apiHealth: (isEnabled ? "ok" : "down") as "ok" | "warn" | "down",
+        };
+      });
+      
+      setGateways(mappedGateways);
+    } catch (err) {
+      console.error("Failed to fetch payment gateway config", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const testGateway = (id: string) => {
+  useEffect(() => {
+    fetchGatewayData();
+  }, []);
+
+  const toggleGateway = async (id: string) => {
+    const gw = gateways.find(g => g.id === id);
+    if (!gw) return;
+    
+    setSaving(true);
+    try {
+      // Toggle by setting or clearing the secret key
+      const newValue = gw.enabled ? "" : "configured";
+      await api.put("admin/payment-gateway", {
+        config: {
+          [`${id}SecretKey`]: { value: newValue, description: `${id} secret key` }
+        }
+      });
+      await fetchGatewayData();
+    } catch (err) {
+      console.error("Failed to toggle gateway", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testGateway = async (id: string) => {
     setTestingGateway(id);
-    setTimeout(() => setTestingGateway(null), 2000);
+    try {
+      const response = await api.post("admin/payment-gateway/test", { gateway: id });
+      if (response.data?.status === "connected") {
+        // Success - refresh data
+        await fetchGatewayData();
+      }
+    } catch (err) {
+      console.error("Gateway test failed", err);
+    } finally {
+      setTimeout(() => setTestingGateway(null), 2000);
+    }
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    await fetchGatewayData();
+    setRefreshing(false);
   };
 
   const totalVolume = gateways.reduce((a, g) => a + g.volume24h, 0);

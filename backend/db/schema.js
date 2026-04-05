@@ -171,3 +171,29 @@ export const systemSettings = pgTable("system_settings", {
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ─── Affiliates ───────────────────────────────────────────────────────────────
+export const affiliates = pgTable("affiliates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id).unique(),
+  referralCode: varchar("referral_code", { length: 20 }).unique().notNull(),
+  totalReferrals: integer("total_referrals").default(0),
+  activeReferrals: integer("active_referrals").default(0),
+  totalEarned: decimal("total_earned", { precision: 12, scale: 2 }).default("0"),
+  pendingPayout: decimal("pending_payout", { precision: 12, scale: 2 }).default("0"),
+  conversionRate: integer("conversion_rate").default(0),
+  status: varchar("status", { length: 20 }).default("pending"), // pending | active | suspended
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Affiliate Referrals ─────────────────────────────────────────────────────
+export const affiliateReferrals = pgTable("affiliate_referrals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  affiliateId: uuid("affiliate_id").references(() => affiliates.id),
+  referredUserId: uuid("referred_user_id").references(() => users.id),
+  referralDate: timestamp("referral_date").defaultNow(),
+  commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }).default("0"),
+  commissionStatus: varchar("commission_status", { length: 20 }).default("pending"), // pending | paid | cancelled
+  createdAt: timestamp("created_at").defaultNow(),
+});

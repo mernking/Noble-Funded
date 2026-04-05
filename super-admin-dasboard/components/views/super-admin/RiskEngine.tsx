@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ShieldAlert, TrendingDown, ToggleLeft, ToggleRight, AlertTriangle,
   RefreshCw, Eye, Server, Sliders, Activity, ArrowUpRight, ArrowDownRight,
-  Zap, Lock, Unlock, ChevronDown, CheckCircle, XCircle, Settings,
+  Zap, Lock, Unlock, ChevronDown, CheckCircle, XCircle, Settings, Loader2,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
+import { api } from "@/lib/api";
 
 const drawdownData = [
   { t: "00:00", exposure: 320000, breaches: 1 },
@@ -52,6 +53,11 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function RiskEngine() {
   const [accounts, setAccounts] = useState(riskyAccounts);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [config, setConfig] = useState<any>(null);
+  const [status, setStatus] = useState<any>(null);
+  
   const [drawdownEngine, setDrawdownEngine] = useState(true);
   const [newsProtection, setNewsProtection] = useState(true);
   const [autoLiquidation, setAutoLiquidation] = useState(true);
@@ -60,6 +66,50 @@ export default function RiskEngine() {
   const [dailyLossLimit, setDailyLossLimit] = useState(5);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState(10);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get("admin/risk-engine");
+      setConfig(response.data?.config || {});
+      setStatus(response.data?.status || {});
+      
+      // Set values from API
+      if (response.data?.config) {
+        const c = response.data.config;
+        if (c.autoLiquidate?.value) setAutoLiquidation(c.autoLiquidate.value === "true");
+        if (c.breachNotification?.value) setNewsProtection(c.breachNotification.value === "true");
+        if (c.maxDrawdownLimit?.value) setMaxDrawdownLimit(parseFloat(c.maxDrawdownLimit.value));
+        if (c.dailyLossLimit?.value) setDailyLossLimit(parseFloat(c.dailyLossLimit.value));
+      }
+    } catch (err) {
+      console.error("Failed to fetch risk config", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const saveConfig = async () => {
+    setSaving(true);
+    try {
+      await api.put("admin/risk-engine", {
+        config: {
+          autoLiquidate: { value: autoLiquidation ? "true" : "false" },
+          breachNotification: { value: newsProtection ? "true" : "false" },
+          maxDrawdownLimit: { value: String(maxDrawdownLimit) },
+          dailyLossLimit: { value: String(dailyLossLimit) },
+        }
+      });
+    } catch (err) {
+      console.error("Failed to save risk config", err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const toggleBook = (id: string) => {
     setAccounts((prev) =>
@@ -75,12 +125,25 @@ export default function RiskEngine() {
     setConfirmAction(null);
   };
 
+  const handleRefresh = () => {
+    fetchData();
+  };
+
   const stats = [
     { label: "TOTAL EXPOSURE", value: "₦3.84M", sub: "Live B-Book notional", icon: TrendingDown, color: "#ff6b6b", trend: "up" },
-    { label: "BREACHES TODAY", value: "14", sub: "Daily loss triggers", icon: AlertTriangle, color: "#ffbc7c", trend: "warn" },
-    { label: "A-BOOK ACCOUNTS", value: "12", sub: "Live market execution", icon: Unlock, color: "#00ffcc", trend: "up" },
-    { label: "RISK ENGINE", value: drawdownEngine ? "ACTIVE" : "PAUSED", sub: "Auto-liquidation service", icon: ShieldAlert, color: drawdownEngine ? "#34d399" : "#ff6b6b", trend: drawdownEngine ? "up" : "down" },
+    { label: "BREACHES TODAY", value: status?.breachAlerts?.toString() || "0", sub: "Daily loss triggers", icon: AlertTriangle, color: "#ffbc7c", trend: "warn" },
+    { label: "A-BOOK ACCOUNTS", value: accounts.filter(a => a.book === "A").length.toString(), sub: "Live market execution", icon: Unlock, color: "#00ffcc", trend: "up" },
+    { label: "RISK ENGINE", value: drawdownEngine ? "ACTIVE" : "PAUSED", sub: status?.engineActive ? "Running" : "Stopped", icon: ShieldAlert, color: drawdownEngine ? "#34d399" : "#ff6b6b", trend: drawdownEngine ? "up" : "down" },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="w-8 h-8 text-[#00ffcc] animate-spin" />
+        <p className="text-sm text-[#a8c0b8]">Loading risk engine...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="page-fade space-y-5">
@@ -94,11 +157,11 @@ export default function RiskEngine() {
           <p className="text-[13px] text-[#a8c0b8]/60">A-Book / B-Book control, drawdown monitoring & slippage configuration</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[rgba(0,255,204,0.18)] text-[12px] text-[#00ffcc] hover:bg-[#00ffcc]/05 transition-all">
+          <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[rgba(0,255,204,0.18)] text-[12px] text-[#00ffcc] hover:bg-[#00ffcc]/05 transition-all">
             <RefreshCw size={13} /> Refresh
           </button>
-          <button className="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00ffcc] text-[#010e0d] text-[13px] font-semibold">
-            <Settings size={13} /> Engine Config
+          <button onClick={saveConfig} disabled={saving} className="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00ffcc] text-[#010e0d] text-[13px] font-semibold disabled:opacity-50">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Settings size={13} />} {saving ? "Saving..." : "Save Config"}
           </button>
         </div>
       </div>
@@ -228,9 +291,9 @@ export default function RiskEngine() {
           {/* Risk Level Distribution */}
           <div className="mt-4 grid grid-cols-3 gap-3">
             {[
-              { label: "CRITICAL (>90%)", count: 1, color: "#ff4444" },
-              { label: "WARNING (70-90%)", count: 2, color: "#ffbc7c" },
-              { label: "WATCH (50-70%)", count: 2, color: "#60a5fa" },
+              { label: "CRITICAL (>90%)", count: accounts.filter(a => a.status === "critical").length, color: "#ff4444" },
+              { label: "WARNING (70-90%)", count: accounts.filter(a => a.status === "warning").length, color: "#ffbc7c" },
+              { label: "WATCH (50-70%)", count: accounts.filter(a => a.status === "watch").length, color: "#60a5fa" },
             ].map((level, i) => (
               <div key={i} className="text-center p-2.5 rounded-xl" style={{ background: `${level.color}10`, border: `1px solid ${level.color}25` }}>
                 <p className="text-[9px] tracking-wider text-[#a8c0b8]/60 uppercase font-display">{level.label}</p>

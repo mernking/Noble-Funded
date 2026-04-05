@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PackageOpen, Plus, Edit2, Trash2, ToggleLeft, ToggleRight, X, Save, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 type Currency = "NGN" | "USD";
 type PlanStatus = "active" | "draft" | "archived";
@@ -59,20 +60,58 @@ const BLANK: EditingPlan = {
 };
 
 export default function ChallengePlansView() {
-  const [plans, setPlans] = useState<ChallengePlan[]>(INITIAL_PLANS);
+  const [plans, setPlans] = useState<ChallengePlan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currencyFilter, setCurrencyFilter] = useState<"all" | Currency>("all");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<EditingPlan | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Fetch plans from API
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get("admin/challenge-plans");
+        const data = response.data;
+        
+        if (data?.plans && Array.isArray(data.plans)) {
+          setPlans(data.plans);
+        } else {
+          setPlans(INITIAL_PLANS);
+        }
+      } catch (err) {
+        console.error("Failed to fetch challenge plans", err);
+        setPlans(INITIAL_PLANS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPlans();
+  }, []);
+
   const filtered = plans.filter((p) => currencyFilter === "all" || p.currency === currencyFilter);
 
-  const toggleStatus = (id: string) => {
-    setPlans((prev) => prev.map((p) => p.id === id ? { ...p, status: p.status === "active" ? "draft" : "active" } : p));
+  const toggleStatus = async (id: string) => {
+    const plan = plans.find(p => p.id === id);
+    if (!plan) return;
+    const newStatus = plan.status === "active" ? "draft" : "active";
+    
+    try {
+      await api.put(`admin/challenge-plans/${id}`, { status: newStatus });
+      setPlans((prev) => prev.map((p) => p.id === id ? { ...p, status: newStatus } : p));
+    } catch (err) {
+      console.error("Failed to toggle plan status", err);
+    }
   };
 
-  const deletePlan = (id: string) => {
-    setPlans((prev) => prev.filter((p) => p.id !== id));
+  const deletePlan = async (id: string) => {
+    try {
+      await api.delete(`admin/challenge-plans/${id}`);
+      setPlans((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Failed to delete plan", err);
+    }
   };
 
   const startEdit = (plan: ChallengePlan) => {
@@ -80,21 +119,38 @@ export default function ChallengePlansView() {
     setShowForm(true);
   };
 
-  const duplicatePlan = (plan: ChallengePlan) => {
-    const newPlan: ChallengePlan = { ...plan, id: `pl-${Date.now()}`, name: `${plan.name} (Copy)`, status: "draft", purchasedCount: 0 };
-    setPlans((prev) => [...prev, newPlan]);
+  const duplicatePlan = async (plan: ChallengePlan) => {
+    const newPlanData = { ...plan, id: undefined, name: `${plan.name} (Copy)`, status: "draft" };
+    try {
+      const response = await api.post("admin/challenge-plans", newPlanData);
+      if (response.data?.plan) {
+        setPlans((prev) => [...prev, response.data.plan]);
+      }
+    } catch (err) {
+      console.error("Failed to duplicate plan", err);
+    }
   };
 
-  const savePlan = () => {
+  const savePlan = async () => {
     if (!editing) return;
-    if (editing.id) {
-      setPlans((prev) => prev.map((p) => p.id === editing.id ? { ...p, ...editing, id: p.id } as ChallengePlan : p));
-    } else {
-      const newPlan: ChallengePlan = { ...editing, id: `pl-${Date.now()}`, purchasedCount: 0 };
-      setPlans((prev) => [...prev, newPlan]);
+    
+    try {
+      if (editing.id) {
+        const response = await api.put(`admin/challenge-plans/${editing.id}`, editing);
+        if (response.data?.plan) {
+          setPlans((prev) => prev.map((p) => p.id === editing.id ? response.data.plan : p));
+        }
+      } else {
+        const response = await api.post("admin/challenge-plans", editing);
+        if (response.data?.plan) {
+          setPlans((prev) => [...prev, response.data.plan]);
+        }
+      }
+      setShowForm(false);
+      setEditing(null);
+    } catch (err) {
+      console.error("Failed to save plan", err);
     }
-    setShowForm(false);
-    setEditing(null);
   };
 
   const formatSize = (plan: ChallengePlan) => plan.currency === "NGN" ? `₦${plan.accountSize.toLocaleString()}` : `$${plan.accountSize.toLocaleString()}`;

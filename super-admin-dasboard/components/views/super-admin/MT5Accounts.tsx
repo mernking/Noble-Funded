@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Server, Search, RefreshCw, Download, AlertTriangle, CheckCircle, XCircle, Clock, Shield, Activity, Eye, Ban, RotateCcw, ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 type AccountPhase = "Phase 1" | "Phase 2" | "Funded" | "Disabled";
 type ServerName = "NF-NG-Demo" | "NF-NG-Live" | "NF-USD-Demo" | "NF-USD-Live";
@@ -24,17 +25,6 @@ interface MT5Account {
   lastActivity: string;
 }
 
-const ACCOUNTS: MT5Account[] = [
-  { id: "a1", login: "105001", userId: "NF-4821", traderName: "Adebayo Okafor", server: "NF-NG-Live", currency: "NGN", balance: 860000, equity: 860000, profitPct: 7.5, dailyDrawdownPct: 0.3, maxDrawdownPct: 2.1, phase: "Funded", openPositions: 2, lastActivity: "3 min ago" },
-  { id: "a2", login: "105002", userId: "NF-4821", traderName: "Adebayo Okafor", server: "NF-NG-Demo", currency: "NGN", balance: 419200, equity: 422000, profitPct: 4.8, dailyDrawdownPct: 0.0, maxDrawdownPct: 1.5, phase: "Phase 1", openPositions: 1, lastActivity: "3 min ago" },
-  { id: "a3", login: "105010", userId: "NF-3312", traderName: "Chidi Nwosu", server: "NF-NG-Demo", currency: "NGN", balance: 467000, equity: 467000, profitPct: 6.7, dailyDrawdownPct: 0.0, maxDrawdownPct: 3.2, phase: "Phase 2", openPositions: 0, lastActivity: "1 hr ago" },
-  { id: "a4", login: "205001", userId: "NF-5501", traderName: "Michael Tetteh", server: "NF-USD-Live", currency: "USD", balance: 5397, equity: 5420, profitPct: 7.9, dailyDrawdownPct: 0.4, maxDrawdownPct: 2.8, phase: "Funded", openPositions: 3, lastActivity: "12 min ago" },
-  { id: "a5", login: "205010", userId: "NF-7712", traderName: "Kwame Asante", server: "NF-USD-Demo", currency: "USD", balance: 25000, equity: 24100, profitPct: -3.6, dailyDrawdownPct: 1.8, maxDrawdownPct: 6.2, phase: "Phase 1", openPositions: 5, lastActivity: "2 min ago" },
-  { id: "a6", login: "105099", userId: "NF-1144", traderName: "Amara Conde", server: "NF-NG-Demo", currency: "NGN", balance: 200000, equity: 181000, profitPct: -9.5, dailyDrawdownPct: 4.9, maxDrawdownPct: 9.5, phase: "Disabled", openPositions: 0, lastActivity: "2 days ago" },
-  { id: "a7", login: "205099", userId: "NF-8801", traderName: "Tunde Femi", server: "NF-USD-Demo", currency: "USD", balance: 10000, equity: 9200, profitPct: -8.0, dailyDrawdownPct: 3.2, maxDrawdownPct: 8.0, phase: "Disabled", openPositions: 0, lastActivity: "1 day ago" },
-  { id: "a8", login: "105030", userId: "NF-6600", traderName: "Emeka Williams", server: "NF-NG-Live", currency: "NGN", balance: 908800, equity: 912000, profitPct: 13.6, dailyDrawdownPct: 0.1, maxDrawdownPct: 1.9, phase: "Funded", openPositions: 1, lastActivity: "18 min ago" },
-];
-
 const PHASE_STYLE: Record<AccountPhase, string> = {
   "Funded": "text-[#00ffcc] bg-[#00ffcc]/10 border-[#00ffcc]/25",
   "Phase 1": "text-[#60a5fa] bg-[#60a5fa]/10 border-[#60a5fa]/25",
@@ -50,18 +40,61 @@ const SERVER_STYLE: Record<ServerName, string> = {
 };
 
 export default function MT5AccountsView() {
-  const [accounts, setAccounts] = useState<MT5Account[]>(ACCOUNTS);
+  const [accounts, setAccounts] = useState<MT5Account[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState<"all" | AccountPhase>("all");
   const [serverFilter, setServerFilter] = useState<"all" | ServerName>("all");
   const [sortKey, setSortKey] = useState<"balance" | "profitPct" | "dailyDrawdownPct">("balance");
   const [sortAsc, setSortAsc] = useState(false);
 
-  const toggleDisable = (id: string) => {
-    setAccounts((prev) => prev.map((a) => {
-      if (a.id !== id) return a;
-      return { ...a, phase: a.phase === "Disabled" ? "Phase 1" : "Disabled" };
-    }));
+  const fetchAccounts = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get("admin/broker-api/accounts");
+      const data = response.data?.accounts || [];
+      
+      const mappedAccounts: MT5Account[] = data.map((a: any, i: number) => ({
+        id: a.id || `acc_${i}`,
+        login: a.login || "",
+        userId: a.userId || "",
+        traderName: a.traderName || "",
+        server: (a.server || "NF-NG-Demo") as ServerName,
+        currency: a.currency === "USD" ? "USD" : "NGN",
+        balance: Number(a.balance || 0),
+        equity: Number(a.equity || 0),
+        profitPct: Number(a.profitPct || 0),
+        dailyDrawdownPct: Number(a.dailyDrawdownPct || 0),
+        maxDrawdownPct: Number(a.maxDrawdownPct || 0),
+        phase: (a.phase || "Phase 1") as AccountPhase,
+        openPositions: Number(a.openPositions || 0),
+        lastActivity: a.lastActivity || "never",
+      }));
+      
+      setAccounts(mappedAccounts);
+    } catch (err) {
+      console.error("Failed to fetch MT5 accounts", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAccounts();
+  }, []);
+
+  const toggleDisable = async (id: string) => {
+    const acc = accounts.find(a => a.id === id);
+    if (!acc) return;
+    
+    const newPhase = acc.phase === "Disabled" ? "Phase 1" : "Disabled";
+    
+    try {
+      await api.put(`admin/broker-api/accounts/${id}`, { phase: newPhase });
+      setAccounts((prev) => prev.map((a) => a.id === id ? { ...a, phase: newPhase } : a));
+    } catch (err) {
+      console.error("Failed to toggle account", err);
+    }
   };
 
   const handleSort = (key: typeof sortKey) => {

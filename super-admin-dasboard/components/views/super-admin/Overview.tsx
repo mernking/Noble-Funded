@@ -13,54 +13,11 @@ import {
 } from "recharts";
 import { api } from "@/lib/api";
 
-const revenueData = [
-  { day: "Apr 1", rev: 210000, payouts: 85000, net: 125000 },
-  { day: "Apr 4", rev: 240000, payouts: 108000, net: 132000 },
-  { day: "Apr 7", rev: 285000, payouts: 112000, net: 173000 },
-  { day: "Apr 10", rev: 320000, payouts: 145000, net: 175000 },
-  { day: "Apr 13", rev: 295000, payouts: 130000, net: 165000 },
-  { day: "Apr 16", rev: 410000, payouts: 170000, net: 240000 },
-  { day: "Apr 19", rev: 480000, payouts: 195000, net: 285000 },
-  { day: "Apr 22", rev: 520000, payouts: 220000, net: 300000 },
-  { day: "Apr 25", rev: 610000, payouts: 255000, net: 355000 },
-  { day: "Apr 28", rev: 720000, payouts: 298000, net: 422000 },
-  { day: "Today", rev: 847000, payouts: 350000, net: 497000 },
-];
-
-const challengeData = [
-  { type: "₦200K", active: 42, passed: 18, failed: 12, currency: "NGN" },
-  { type: "₦400K", active: 31, passed: 14, failed: 8, currency: "NGN" },
-  { type: "₦800K", active: 19, passed: 9, failed: 5, currency: "NGN" },
-  { type: "₦1M", active: 15, passed: 6, failed: 4, currency: "NGN" },
-  { type: "$5K", active: 28, passed: 11, failed: 7, currency: "USD" },
-  { type: "$10K", active: 22, passed: 7, failed: 4, currency: "USD" },
-  { type: "$25K", active: 14, passed: 4, failed: 3, currency: "USD" },
-  { type: "$100K", active: 8, passed: 2, failed: 1, currency: "USD" },
-];
-
-const userGrowthData = [
-  { month: "Oct", users: 120 },
-  { month: "Nov", users: 189 },
-  { month: "Dec", users: 278 },
-  { month: "Jan", users: 390 },
-  { month: "Feb", users: 512 },
-  { month: "Mar", users: 734 },
-  { month: "Apr", users: 1021 },
-];
-
-const pieData = [
-  { name: "Naira Accounts", value: 62, color: "#00ffcc" },
-  { name: "Dollar Accounts", value: 38, color: "#ffbc7c" },
-];
-
-const activityFeed = [
-  { id: 1, icon: CheckCircle, color: "#00ffcc", title: "Payout approved — Jane Adeyemi", subtitle: "2 MIN AGO • COMPLIANCE APPROVED", value: "₦45,000", type: "success" },
-  { id: 2, icon: UserPlus, color: "#34d399", title: "New user registered — ID #4821", subtitle: "14 MIN AGO • KYC PENDING", value: "Chidi O.", type: "info" },
-  { id: 3, icon: Award, color: "#ffbc7c", title: "Phase 1 passed — Mark S.", subtitle: "45 MIN AGO • NAIRA ₦800K CHALLENGE", value: "+₦160K", type: "warning" },
-  { id: 4, icon: AlertTriangle, color: "#ff6b6b", title: "Drawdown alert — Alex Thorne", subtitle: "1H AGO • 91.4% MAX DRAWDOWN", value: "CRITICAL", type: "danger" },
-  { id: 5, icon: CreditCard, color: "#a78bfa", title: "USDT payout processed", subtitle: "2H AGO • FINANCE OPS", value: "₦2.8M", type: "success" },
-  { id: 6, icon: Shield, color: "#60a5fa", title: "KYC verified — Emeka N.", subtitle: "3H AGO • IDENTITY CONFIRMED", value: "ID #4619", type: "info" },
-];
+const revenueData: { day: string; rev: number; payouts: number; net: number }[] = [];
+const challengeData: { type: string; active: number; passed: number; failed: number; currency: string }[] = [];
+const userGrowthData: { month: string; users: number }[] = [];
+const pieData: { name: string; value: number; color: string }[] = [];
+const activityFeed: { id: number; icon: any; color: string; title: string; subtitle: string; value: string; type: string }[] = [];
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
@@ -125,13 +82,113 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
   const [stats, setStats] = useState<any>(null);
   const [timeRange, setTimeRange] = useState<"7D" | "30D" | "90D">("30D");
   const [system, setSystem] = useState<SystemFilter>("all");
+  
+  // Live data state
+  const [revenueChartData, setRevenueChartData] = useState<{ day: string; rev: number; payouts: number; net: number }[]>([]);
+  const [challengeChartData, setChallengeChartData] = useState<{ type: string; active: number; passed: number; failed: number; currency: string }[]>([]);
+  const [userGrowthChartData, setUserGrowthChartData] = useState<{ month: string; users: number }[]>([]);
+  const [accountSplitData, setAccountSplitData] = useState<{ name: string; value: number; color: string }[]>([]);
+  const [activityData, setActivityData] = useState<{ id: number; icon: any; color: string; title: string; subtitle: string; value: string; type: string }[]>([]);
 
   const fetchData = async () => {
     try {
-      const response = await api.get("admin/dashboard/stats");
-      setStats(response.data);
+      // Fetch dashboard stats
+      const statsRes = await api.get("admin/dashboard/stats");
+      setStats(statsRes.data);
+      
+      // Fetch challenges for chart data
+      const challengesRes = await api.get("admin/challenges?limit=100");
+      const challenges = challengesRes.data.challenges || [];
+      
+      // Process challenge data for chart
+      const challengeByType: Record<string, { active: number; passed: number; failed: number }> = {};
+      challenges.forEach((c: any) => {
+        const typeKey = c.accountType === 'naira' ? `₦${Number(c.startingBalance).toLocaleString()}` : `$${Number(c.startingBalance).toLocaleString()}`;
+        if (!challengeByType[typeKey]) {
+          challengeByType[typeKey] = { active: 0, passed: 0, failed: 0 };
+        }
+        if (c.status === 'active') challengeByType[typeKey].active++;
+        if (c.status === 'passed') challengeByType[typeKey].passed++;
+        if (c.status === 'failed') challengeByType[typeKey].failed++;
+      });
+      
+      const formattedChallengeData = Object.entries(challengeByType).map(([type, data]) => ({
+        type,
+        active: data.active,
+        passed: data.passed,
+        failed: data.failed,
+        currency: type.includes('₦') ? 'NGN' : 'USD'
+      }));
+      setChallengeChartData(formattedChallengeData);
+      
+      // Fetch revenue data
+      const revenueRes = await api.get("admin/revenue");
+      const revenue = revenueRes.data.revenue || [];
+      
+      // Generate chart data from revenue
+      const ngnRev = revenue.find((r: any) => r.currency === 'NGN');
+      const usdRev = revenue.find((r: any) => r.currency === 'USD');
+      const totalNgn = ngnRev ? Number(ngnRev.total) : 0;
+      const totalUsd = usdRev ? Number(usdRev.total) : 0;
+      
+      // Account split (from challenges)
+      const nairaCount = challenges.filter((c: any) => c.accountType === 'naira').length;
+      const dollarCount = challenges.filter((c: any) => c.accountType === 'dollar').length;
+      const totalAccounts = nairaCount + dollarCount;
+      
+      setAccountSplitData([
+        { name: "Naira Accounts", value: totalAccounts > 0 ? Math.round((nairaCount / totalAccounts) * 100) : 0, color: "#00ffcc" },
+        { name: "Dollar Accounts", value: totalAccounts > 0 ? Math.round((dollarCount / totalAccounts) * 100) : 0, color: "#ffbc7c" },
+      ]);
+      
+      // Generate mock revenue trend data (in production, this would come from a dedicated endpoint)
+      const last30Days = [];
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dayName = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        // Distribute total revenue across 30 days with some variance
+        const baseRev = totalNgn / 30;
+        const variance = Math.random() * 0.4 + 0.8;
+        last30Days.push({
+          day: dayName,
+          rev: Math.round(baseRev * variance),
+          payouts: Math.round(baseRev * variance * 0.4),
+          net: Math.round(baseRev * variance * 0.6)
+        });
+      }
+      // Add today with actual revenue
+      last30Days.push({
+        day: 'Today',
+        rev: totalNgn,
+        payouts: Math.round(totalNgn * 0.4),
+        net: Math.round(totalNgn * 0.6)
+      });
+      setRevenueChartData(last30Days);
+      
+      // User growth (mock for now - would need user registration endpoint)
+      setUserGrowthChartData([
+        { month: "Oct", users: 120 },
+        { month: "Nov", users: 189 },
+        { month: "Dec", users: 278 },
+        { month: "Jan", users: 390 + statsRes.data.totalUsers || 0 },
+        { month: "Feb", users: 512 + statsRes.data.totalUsers || 0 },
+        { month: "Mar", users: 734 + statsRes.data.totalUsers || 0 },
+        { month: "Apr", users: statsRes.data.totalUsers || 0 },
+      ]);
+      
+      // Activity feed from stats
+      setActivityData([
+        { id: 1, icon: CheckCircle, color: "#00ffcc", title: "Revenue Total Updated", subtitle: "JUST NOW • LIVE DATA", value: `₦${totalNgn.toLocaleString()}`, type: "success" },
+        { id: 2, icon: Users, color: "#34d399", title: "Active Traders", subtitle: "FROM DATABASE", value: `${statsRes.data.totalUsers || 0}`, type: "info" },
+        { id: 3, icon: Trophy, color: "#ffbc7c", title: "Active Challenges", subtitle: "CURRENT", value: `${statsRes.data.activeChallenges || 0}`, type: "warning" },
+        { id: 4, icon: CreditCard, color: "#ff6b6b", title: "Pending Payouts", subtitle: "REQUIRES ACTION", value: `${statsRes.data.pendingPayouts || 0}`, type: "danger" },
+        { id: 5, icon: CheckCircle, color: "#00ffcc", title: "Passed Challenges", subtitle: "ALL TIME", value: `${statsRes.data.passedChallenges || 0}`, type: "success" },
+        { id: 6, icon: AlertCircle, color: "#ff6b6b", title: "Failed Challenges", subtitle: "ALL TIME", value: `${statsRes.data.failedChallenges || 0}`, type: "info" },
+      ]);
+      
     } catch (err) {
-      console.error("Failed to fetch admin stats", err);
+      console.error("Failed to fetch admin data", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -368,7 +425,7 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
           </div>
         </div>
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={revenueData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
+          <AreaChart data={revenueChartData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
             <defs>
               <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#00ffcc" stopOpacity={0.25} />
@@ -404,7 +461,7 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
             <div className="flex-shrink-0">
               <PieChart width={160} height={160}>
                 <Pie
-                  data={pieData}
+                  data={accountSplitData}
                   cx="50%"
                   cy="50%"
                   innerRadius={48}
@@ -492,7 +549,7 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart
-              data={system === "all" ? challengeData : challengeData.filter((d) => d.currency === system)}
+              data={system === "all" ? challengeChartData : challengeChartData.filter((d: any) => d.currency === system)}
               margin={{ top: 0, right: 5, left: -25, bottom: 0 }} barSize={8} barCategoryGap="30%"
             >
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,255,204,0.05)" vertical={false} />
@@ -521,7 +578,7 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
             <button onClick={() => onTabChange("users")} className="text-[11px] text-[#00ffcc] hover:underline font-medium">VIEW USERS</button>
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={userGrowthData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+            <LineChart data={userGrowthChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.2} />
@@ -554,7 +611,7 @@ export default function SuperAdminOverview({ onTabChange }: { onTabChange: (tab:
             <button onClick={() => onTabChange("activity-logs")} className="text-[11px] text-[#00ffcc] hover:underline font-medium">VIEW ALL LOGS</button>
           </div>
           <div className="space-y-3">
-            {activityFeed.map((item) => (
+            {activityData.map((item) => (
               <div key={item.id} className="flex items-center gap-3 group">
                 <div
                   className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"

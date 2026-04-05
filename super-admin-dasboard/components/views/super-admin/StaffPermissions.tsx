@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShieldCheck, Plus, Edit2, Save, X } from "lucide-react";
+import { api } from "@/lib/api";
 
-const STAFF = [
-  { id: 1, name: "Sarah Mitchell", email: "sarah.m@noblefunded.com", role: "Compliance", active: true },
-  { id: 2, name: "James Okafor", email: "james.o@noblefunded.com", role: "Support", active: true },
-  { id: 3, name: "Priya Sharma", email: "priya.s@noblefunded.com", role: "Marketing", active: true },
-  { id: 4, name: "Leo Brandt", email: "leo.b@noblefunded.com", role: "Developer", active: false },
-  { id: 5, name: "Aisha Bello", email: "aisha.b@noblefunded.com", role: "Support", active: true },
-];
+type StaffMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+};
 
 type PermMap = Record<string, Record<string, boolean>>;
 
@@ -30,29 +31,70 @@ const PERM_LABELS: Record<string, string> = {
 };
 
 export default function StaffPermissions() {
-  const [selected, setSelected] = useState(STAFF[0]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [selected, setSelected] = useState<StaffMember | null>(null);
   const [perms, setPerms] = useState<PermMap>(DEFAULT_PERMS);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get("admin/permissions");
+        const data = response.data;
+        
+        if (data?.staff) {
+          setStaff(data.staff);
+          if (data.staff.length > 0) {
+            setSelected(data.staff[0]);
+          }
+        }
+        
+        if (data?.permissions) {
+          setPerms(data.permissions);
+        }
+      } catch (err) {
+        console.error("Failed to fetch permissions", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
   const togglePerm = (perm: string) => {
-    if (!editing) return;
+    if (!editing || !selected) return;
     setPerms(prev => ({
       ...prev,
       [selected.role]: {
         ...prev[selected.role],
-        [perm]: !prev[selected.role][perm],
+        [perm]: !prev[selected.role]?.[perm],
       },
     }));
   };
 
-  const handleSave = () => {
-    setEditing(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    try {
+      await api.put("admin/permissions", { permissions: perms });
+      setEditing(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save permissions", err);
+    }
   };
 
-  const currentPerms = perms[selected.role] || {};
+  const currentPerms = selected ? (perms[selected.role] || {}) : {};
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin w-8 h-8 border-2 border-[#00ffcc] border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="page-fade space-y-5">
@@ -71,19 +113,19 @@ export default function StaffPermissions() {
         <div className="glass-card rounded-xl p-5">
           <h2 className="text-sm font-semibold font-display text-white mb-4">Staff Members</h2>
           <div className="space-y-2">
-            {STAFF.map(s => (
+            {staff.map((s: StaffMember) => (
               <button
                 key={s.id}
                 onClick={() => { setSelected(s); setEditing(false); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                  selected.id === s.id
+                  selected?.id === s.id
                     ? "bg-[#00ffcc]/10 border border-[#00ffcc]/25"
                     : "bg-[#0b2f2d]/20 border border-[rgba(0,255,204,0.06)] hover:border-[#00ffcc]/15"
                 }`}
               >
                 <div className="w-8 h-8 rounded-lg bg-[#0b2f2d] flex items-center justify-center flex-shrink-0">
                   <span className="text-[10px] font-bold text-[#00ffcc]">
-                    {s.name.split(" ").map(n => n[0]).join("")}
+                    {s.name.split(" ").map((n: string) => n[0]).join("")}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -100,8 +142,8 @@ export default function StaffPermissions() {
         <div className="lg:col-span-2 glass-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="text-base font-semibold font-display text-white">{selected.name}</h2>
-              <p className="text-xs text-[#b9cbc2]/50">{selected.email} · Role: {selected.role}</p>
+              <h2 className="text-base font-semibold font-display text-white">{selected?.name}</h2>
+              <p className="text-xs text-[#b9cbc2]/50">{selected?.email} · Role: {selected?.role}</p>
             </div>
             <div className="flex items-center gap-2">
               {saved && <span className="text-xs text-[#00ffcc] flex items-center gap-1"><Save size={12} /> Saved</span>}
@@ -125,7 +167,7 @@ export default function StaffPermissions() {
           <div className="flex items-center gap-2 mb-5 px-4 py-3 rounded-lg bg-[#00ffcc]/04 border border-[#00ffcc]/10">
             <ShieldCheck size={15} className="text-[#00ffcc] flex-shrink-0" />
             <p className="text-xs text-[#b9cbc2]">
-              These permissions apply to the <strong className="text-white">{selected.role}</strong> role. Changing them affects all staff with this role.
+              These permissions apply to the <strong className="text-white">{selected?.role}</strong> role. Changing them affects all staff with this role.
             </p>
           </div>
 

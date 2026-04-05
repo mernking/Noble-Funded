@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Medal, Trophy, TrendingUp, Eye, EyeOff, Download, RefreshCw, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Medal, Trophy, Eye, EyeOff, Download, RefreshCw, Search, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 interface LeaderboardEntry {
   rank: number;
@@ -17,36 +18,66 @@ interface LeaderboardEntry {
   winRate: number;
   tradingDays: number;
   visible: boolean;
+  challengeId?: number;
 }
-
-const INITIAL_DATA: LeaderboardEntry[] = [
-  { rank: 1, userId: "NF-4821", name: "Adebayo O.", country: "NG", accountType: "Funded", accountSize: "₦800K", profitPct: 18.4, profitAmount: "₦147,200", maxDrawdown: 3.1, winRate: 74, tradingDays: 28, visible: true },
-  { rank: 2, userId: "NF-3312", name: "Chidi N.", country: "NG", accountType: "Funded", accountSize: "₦400K", profitPct: 16.7, profitAmount: "₦66,800", maxDrawdown: 4.2, winRate: 68, tradingDays: 30, visible: true },
-  { rank: 3, userId: "NF-5501", name: "Michael T.", country: "GH", accountType: "Funded", accountSize: "$5K", profitPct: 15.9, profitAmount: "$795", maxDrawdown: 5.8, winRate: 71, tradingDays: 25, visible: true },
-  { rank: 4, userId: "NF-2201", name: "Fatima B.", country: "NG", accountType: "Funded", accountSize: "₦200K", profitPct: 14.2, profitAmount: "₦28,400", maxDrawdown: 6.1, winRate: 65, tradingDays: 22, visible: true },
-  { rank: 5, userId: "NF-6600", name: "Emeka W.", country: "NG", accountType: "Funded", accountSize: "₦800K", profitPct: 13.8, profitAmount: "₦110,400", maxDrawdown: 4.9, winRate: 69, tradingDays: 31, visible: true },
-  { rank: 6, userId: "NF-1144", name: "Amara C.", country: "KE", accountType: "Funded", accountSize: "$10K", profitPct: 12.5, profitAmount: "$1,250", maxDrawdown: 7.2, winRate: 63, tradingDays: 20, visible: false },
-  { rank: 7, userId: "NF-3399", name: "Jide L.", country: "NG", accountType: "Phase 2", accountSize: "₦400K", profitPct: 11.9, profitAmount: "₦47,600", maxDrawdown: 5.3, winRate: 61, tradingDays: 18, visible: true },
-  { rank: 8, userId: "NF-7712", name: "Kwame A.", country: "GH", accountType: "Phase 1", accountSize: "$25K", profitPct: 11.1, profitAmount: "$2,775", maxDrawdown: 8.4, winRate: 58, tradingDays: 26, visible: true },
-  { rank: 9, userId: "NF-8801", name: "Tunde F.", country: "NG", accountType: "Funded", accountSize: "₦200K", profitPct: 10.8, profitAmount: "₦21,600", maxDrawdown: 6.7, winRate: 60, tradingDays: 19, visible: false },
-  { rank: 10, userId: "NF-9903", name: "Ngozi A.", country: "NG", accountType: "Phase 2", accountSize: "₦800K", profitPct: 10.2, profitAmount: "₦81,600", maxDrawdown: 7.9, winRate: 57, tradingDays: 24, visible: true },
-];
 
 const FLAG: Record<string, string> = { NG: "🇳🇬", GH: "🇬🇭", KE: "🇰🇪", ZA: "🇿🇦", TZ: "🇹🇿" };
 
 type SortKey = "rank" | "profitPct" | "maxDrawdown" | "winRate";
 
 export default function LeaderboardView() {
-  const [entries, setEntries] = useState<LeaderboardEntry[]>(INITIAL_DATA);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState<"monthly" | "alltime">("monthly");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortAsc, setSortAsc] = useState(true);
 
-  const toggleVisibility = (userId: string) => {
-    setEntries((prev) =>
-      prev.map((e) => e.userId === userId ? { ...e, visible: !e.visible } : e)
-    );
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch leaderboard data
+      const [leaderboardRes, statsRes] = await Promise.all([
+        api.get(`admin/leaderboard?period=${period}&limit=50`),
+        api.get("admin/leaderboard/stats")
+      ]);
+
+      const leaderboard = leaderboardRes.data?.leaderboard || [];
+      setEntries(leaderboard);
+      setStats(statsRes.data);
+    } catch (err) {
+      console.error("Failed to fetch leaderboard", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [period]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  const toggleVisibility = async (challengeId: number, currentVisible: boolean) => {
+    try {
+      await api.put("admin/leaderboard/visibility", {
+        challengeId,
+        visible: !currentVisible
+      });
+      
+      setEntries((prev) =>
+        prev.map((e) => e.challengeId === challengeId ? { ...e, visible: !currentVisible } : e)
+      );
+    } catch (err) {
+      console.error("Failed to toggle visibility", err);
+    }
   };
 
   const handleSort = (key: SortKey) => {
@@ -74,6 +105,15 @@ export default function LeaderboardView() {
     return "text-[#b9cbc2]/40";
   };
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="w-8 h-8 text-[#00ffcc] animate-spin" />
+        <p className="text-sm text-[#a8c0b8]">Loading leaderboard...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="page-fade space-y-6">
       {/* Header */}
@@ -86,8 +126,12 @@ export default function LeaderboardView() {
           <p className="text-[#b9cbc2]/60 text-sm">Control which traders appear on the public leaderboard.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-[#00ffcc] border border-[#00ffcc]/20 hover:bg-[#00ffcc]/08 transition-all">
-            <RefreshCw size={12} /> Refresh
+          <button 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-[#00ffcc] border border-[#00ffcc]/20 hover:bg-[#00ffcc]/08 transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} /> Refresh
           </button>
           <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-[#b9cbc2] border border-[rgba(0,255,204,0.12)] hover:text-white transition-all">
             <Download size={12} /> Export CSV
@@ -98,10 +142,10 @@ export default function LeaderboardView() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Total Ranked", value: entries.length.toString(), sub: "this month" },
-          { label: "Visible on Board", value: visibleCount.toString(), sub: `of ${entries.length} traders` },
-          { label: "Top Profit", value: "18.4%", sub: "NF-4821 Adebayo O." },
-          { label: "Avg Win Rate", value: `${Math.round(entries.reduce((s, e) => s + e.winRate, 0) / entries.length)}%`, sub: "across all traders" },
+          { label: "Total Ranked", value: stats?.totalRanked?.toString() || "0", sub: "this month" },
+          { label: "Visible on Board", value: stats?.visibleOnBoard?.toString() || "0", sub: `of ${stats?.totalRanked || 0} traders` },
+          { label: "Top Profit", value: stats?.topProfit ? `${stats.topProfit}%` : "0%", sub: stats?.topTrader ? `NF-XXXX ${stats.topTrader}` : "N/A" },
+          { label: "Avg Win Rate", value: stats?.avgWinRate ? `${stats.avgWinRate}%` : "0%", sub: "across all traders" },
         ].map((s) => (
           <div key={s.label} className="glass-card rounded-xl p-4">
             <p className="text-[11px] text-[#b9cbc2]/50 uppercase tracking-wider mb-1">{s.label}</p>
@@ -164,68 +208,76 @@ export default function LeaderboardView() {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#00ffcc]/05">
-            {filtered.map((entry) => (
-              <tr key={entry.userId} className={cn("hover:bg-[#00ffcc]/04 transition-all", !entry.visible && "opacity-50")}>
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-1.5">
-                    <Trophy size={14} className={medalColor(entry.rank)} />
-                    <span className="font-bold font-display text-white">{entry.rank}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3.5">
-                  <div>
-                    <p className="text-white font-medium text-sm">
-                      <span className="mr-1">{FLAG[entry.country] || "🌍"}</span>
-                      {entry.name}
-                    </p>
-                    <p className="text-[11px] text-[#b9cbc2]/50">{entry.userId}</p>
-                  </div>
-                </td>
-                <td className="px-4 py-3.5">
-                  <span className={cn(
-                    "text-[11px] px-2 py-0.5 rounded-full border",
-                    entry.accountType === "Funded" ? "text-[#00ffcc] border-[#00ffcc]/25 bg-[#00ffcc]/08" : "text-[#60a5fa] border-[#60a5fa]/25 bg-[#60a5fa]/08"
-                  )}>
-                    {entry.accountType}
-                  </span>
-                  <p className="text-[11px] text-[#b9cbc2]/50 mt-0.5">{entry.accountSize}</p>
-                </td>
-                <td className="px-4 py-3.5">
-                  <span className="text-[#00ffcc] font-bold font-display">+{entry.profitPct}%</span>
-                </td>
-                <td className="px-4 py-3.5 text-[#b9cbc2] text-sm">{entry.profitAmount}</td>
-                <td className="px-4 py-3.5">
-                  <span className={cn("text-sm font-medium", entry.maxDrawdown > 7 ? "text-[#f59e0b]" : "text-[#b9cbc2]")}>
-                    {entry.maxDrawdown}%
-                  </span>
-                </td>
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 rounded-full bg-[#0b2f2d]">
-                      <div
-                        className="h-1.5 rounded-full bg-[#00ffcc]"
-                        style={{ width: `${entry.winRate}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-[#b9cbc2]">{entry.winRate}%</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3.5 text-[#b9cbc2] text-sm">{entry.tradingDays}</td>
-                <td className="px-4 py-3.5">
-                  <button
-                    onClick={() => toggleVisibility(entry.userId)}
-                    className={cn(
-                      "w-9 h-9 rounded-lg flex items-center justify-center transition-all border",
-                      entry.visible
-                        ? "bg-[#00ffcc]/10 border-[#00ffcc]/20 text-[#00ffcc] hover:bg-[#00ffcc]/20"
-                        : "bg-[#0b2f2d]/60 border-[rgba(0,255,204,0.08)] text-[#b9cbc2]/40 hover:text-white"
-                    )}
-                  >
-                    {entry.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                  </button>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-8 text-center text-[#b9cbc2]/50">
+                  No leaderboard entries found
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map((entry) => (
+                <tr key={entry.userId} className={cn("hover:bg-[#00ffcc]/04 transition-all", !entry.visible && "opacity-50")}>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-1.5">
+                      <Trophy size={14} className={medalColor(entry.rank)} />
+                      <span className="font-bold font-display text-white">{entry.rank}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div>
+                      <p className="text-white font-medium text-sm">
+                        <span className="mr-1">{FLAG[entry.country] || "🌍"}</span>
+                        {entry.name}
+                      </p>
+                      <p className="text-[11px] text-[#b9cbc2]/50">{entry.userId}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className={cn(
+                      "text-[11px] px-2 py-0.5 rounded-full border",
+                      entry.accountType === "Funded" ? "text-[#00ffcc] border-[#00ffcc]/25 bg-[#00ffcc]/08" : "text-[#60a5fa] border-[#60a5fa]/25 bg-[#60a5fa]/08"
+                    )}>
+                      {entry.accountType}
+                    </span>
+                    <p className="text-[11px] text-[#b9cbc2]/50 mt-0.5">{entry.accountSize}</p>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className="text-[#00ffcc] font-bold font-display">+{entry.profitPct}%</span>
+                  </td>
+                  <td className="px-4 py-3.5 text-[#b9cbc2] text-sm">{entry.profitAmount}</td>
+                  <td className="px-4 py-3.5">
+                    <span className={cn("text-sm font-medium", entry.maxDrawdown > 7 ? "text-[#f59e0b]" : "text-[#b9cbc2]")}>
+                      {entry.maxDrawdown}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-1.5 rounded-full bg-[#0b2f2d]">
+                        <div
+                          className="h-1.5 rounded-full bg-[#00ffcc]"
+                          style={{ width: `${entry.winRate}%` }}
+                        />
+                      </div>
+                      <span className="text-sm text-[#b9cbc2]">{entry.winRate}%</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5 text-[#b9cbc2] text-sm">{entry.tradingDays}</td>
+                  <td className="px-4 py-3.5">
+                    <button
+                      onClick={() => entry.challengeId && toggleVisibility(entry.challengeId, entry.visible)}
+                      className={cn(
+                        "w-9 h-9 rounded-lg flex items-center justify-center transition-all border",
+                        entry.visible
+                          ? "bg-[#00ffcc]/10 border-[#00ffcc]/20 text-[#00ffcc] hover:bg-[#00ffcc]/20"
+                          : "bg-[#0b2f2d]/60 border-[rgba(0,255,204,0.08)] text-[#b9cbc2]/40 hover:text-white"
+                      )}
+                    >
+                      {entry.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

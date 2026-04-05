@@ -1,68 +1,111 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DollarSign, RefreshCw, ToggleLeft, ToggleRight, ArrowUpDown,
   TrendingUp, TrendingDown, Clock, AlertTriangle, CheckCircle,
   Save, History, Zap, Globe,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { api } from "@/lib/api";
 
-const rateHistory = [
-  { date: "Mar 25", rate: 1510 },
-  { date: "Mar 27", rate: 1525 },
-  { date: "Mar 29", rate: 1498 },
-  { date: "Apr 1", rate: 1540 },
-  { date: "Apr 3", rate: 1565 },
-  { date: "Apr 5", rate: 1552 },
-  { date: "Apr 7", rate: 1580 },
-  { date: "Apr 9", rate: 1590 },
-  { date: "Apr 11", rate: 1575 },
-  { date: "Apr 13", rate: 1610 },
-  { date: "Apr 15", rate: 1595 },
-  { date: "Today", rate: 1620 },
-];
-
-const auditLog = [
-  { id: 1, time: "Today 10:42", user: "Alexander Noble", action: "Switched to Fixed Rate", value: "₦1,500/$", reason: "Weekend rate lock" },
-  { id: 2, time: "Today 09:15", user: "System", action: "Live rate updated", value: "₦1,620/$", reason: "API sync" },
-  { id: 3, time: "Yesterday 18:00", user: "Alexander Noble", action: "Switched to Live API", value: "—", reason: "Market hours resumed" },
-  { id: 4, time: "Apr 12, 17:55", user: "Alexander Noble", action: "Switched to Fixed Rate", value: "₦1,550/$", reason: "Weekend lock" },
-  { id: 5, time: "Apr 12, 09:05", user: "System", action: "Live rate updated", value: "₦1,575/$", reason: "API sync" },
-];
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload?.length) {
-    return (
-      <div className="glass-modal rounded-xl p-3 text-xs border border-[rgba(0,255,204,0.2)]">
-        <p className="text-[#a8c0b8] mb-1 font-display font-semibold">{label}</p>
-        <p className="text-[#00ffcc] font-bold">₦{payload[0]?.value.toLocaleString()}/$1</p>
-      </div>
-    );
-  }
-  return null;
-};
+type RateHistory = { date: string; rate: number };
+type AuditEntry = { id: number; time: string; user: string; action: string; value: string; reason: string };
 
 export default function FXRateEngine() {
   const [useLiveRate, setUseLiveRate] = useState(false);
   const [fixedRate, setFixedRate] = useState(1500);
   const [draftRate, setDraftRate] = useState("1500");
+  const [liveRate, setLiveRate] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [liveRate] = useState(1620);
+  const [refreshing, setRefreshing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [reason, setReason] = useState("");
+  const [rateHistory, setRateHistory] = useState<RateHistory[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+
+  const fetchRateData = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get("admin/fx-rate");
+      const data = response.data;
+      
+      setFixedRate(Number(data?.fixedRate || 1500));
+      setDraftRate(String(data?.fixedRate || 1500));
+      setLiveRate(Number(data?.liveRate || 0));
+      setUseLiveRate(data?.useLiveRate || false);
+      setRateHistory(data?.history || []);
+      setAuditLog(data?.auditLog || []);
+    } catch (err) {
+      console.error("Failed to fetch FX rate data", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRateData();
+  }, []);
 
   const activeRate = useLiveRate ? liveRate : fixedRate;
-  const rateChange = liveRate - 1580;
-  const rateChangePct = ((rateChange / 1580) * 100).toFixed(2);
+  const rateChange = liveRate - fixedRate;
+  const rateChangePct = ((rateChange / fixedRate) * 100).toFixed(2);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const parsed = Number(draftRate);
     if (!isNaN(parsed) && parsed > 0) {
-      setFixedRate(parsed);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setSaving(true);
+      try {
+        await api.put("admin/fx-rate", {
+          fixedRate: parsed,
+          reason: reason || "Manual rate update"
+        });
+        setFixedRate(parsed);
+        await fetchRateData();
+      } catch (err) {
+        console.error("Failed to save rate", err);
+      } finally {
+        setSaving(false);
+      }
     }
+  };
+
+  const handleToggleLive = async () => {
+    try {
+      await api.put("admin/fx-rate", {
+        useLiveRate: !useLiveRate
+      });
+      setUseLiveRate(!useLiveRate);
+      await fetchRateData();
+    } catch (err) {
+      console.error("Failed to toggle rate mode", err);
+    }
+  };
+
+  const handleRefreshLive = async () => {
+    setRefreshing(true);
+    try {
+      await api.post("admin/fx-rate/refresh");
+      await fetchRateData();
+    } catch (err) {
+      console.error("Failed to refresh live rate", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload?.length) {
+      return (
+        <div className="glass-modal rounded-xl p-3 text-xs border border-[rgba(0,255,204,0.2)]">
+          <p className="text-[#a8c0b8] mb-1 font-display font-semibold">{label}</p>
+          <p className="text-[#00ffcc] font-bold">₦{payload[0]?.value.toLocaleString()}/$1</p>
+        </div>
+      );
+    }
+    return null;
   };
 
   const exampleAmounts = [100, 500, 1000, 5000];

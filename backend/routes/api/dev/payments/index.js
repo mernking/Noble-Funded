@@ -166,7 +166,7 @@ export default async function paymentsRoutes(fastify) {
       maxDailyLossPct: challengeType === "naira" ? "0.00" : "3.00",
       durationDays: challengeType === "naira" ? 60 : 90,
       status: "active",
-      mt5Login,
+      mt5Login: null,
       phase: 1,
     });
 

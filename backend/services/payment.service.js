@@ -84,4 +84,36 @@ export const paymentService = {
 
     return signature === secretHash;
   },
+
+  /**
+   * Tests the Flutterwave API connection
+   * Calls the /virtual-banks endpoint to verify credentials work
+   */
+  async testConnection() {
+    try {
+      const response = await fetch("https://api.flutterwave.com/v3/banks/NG", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.status !== "success") {
+        throw new Error(data.message || "Failed to connect to Flutterwave");
+      }
+
+      return {
+        status: "connected",
+        latency: 0,
+        message: "Flutterwave connection successful",
+        bankCount: data.data?.length || 0
+      };
+    } catch (error) {
+      console.error("Flutterwave Connection Test Error:", error);
+      throw error;
+    }
+  },
 };

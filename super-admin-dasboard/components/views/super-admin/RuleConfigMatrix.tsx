@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   SlidersHorizontal, Save, RotateCcw, CheckCircle2, AlertTriangle,
   Shield, Trophy, CreditCard, Clock, Zap, Info, TrendingDown,
   ChevronRight, ToggleLeft, ToggleRight, Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -146,6 +147,36 @@ export default function RuleConfigMatrix() {
   const [activeCategory, setActiveCategory] = useState<Category>("Risk Management");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [showChanges, setShowChanges] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch rules from API on mount
+  useEffect(() => {
+    const fetchRules = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get("admin/rule-config");
+        const data = response.data;
+        
+        if (data?.rules && Array.isArray(data.rules)) {
+          // Merge API rules with initial config (preserving UI metadata)
+          const mergedRules = INITIAL_RULES.map(initRule => {
+            const apiRule = data.rules.find((r: any) => r.id === initRule.id);
+            if (apiRule) {
+              return { ...initRule, value: apiRule.value };
+            }
+            return initRule;
+          });
+          setRules(mergedRules);
+          setSaved(mergedRules);
+        }
+      } catch (err) {
+        console.error("Failed to fetch rule config", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRules();
+  }, []);
 
   const filtered = rules.filter((r) => r.category === activeCategory);
   const hasChanges = JSON.stringify(rules) !== JSON.stringify(saved);
@@ -158,11 +189,18 @@ export default function RuleConfigMatrix() {
 
   const handleSave = async () => {
     setSaveState("saving");
-    // In production: POST /api/rules with rules array — n8n reads from DB
-    await new Promise((r) => setTimeout(r, 1400));
-    setSaved([...rules]);
-    setSaveState("saved");
-    setTimeout(() => setSaveState("idle"), 3000);
+    try {
+      // Save rules to API - n8n reads from DB
+      await api.put("admin/rule-config", {
+        rules: rules.map(r => ({ id: r.id, value: r.value }))
+      });
+      setSaved([...rules]);
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 3000);
+    } catch (err) {
+      console.error("Failed to save rules", err);
+      setSaveState("idle");
+    }
   };
 
   const handleReset = () => {

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Share2, Search, Download, TrendingUp, Users, CreditCard, DollarSign, Eye, Ban, CheckCircle, Clock, XCircle, Copy, Check } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Share2, Search, Download, TrendingUp, Users, CreditCard, DollarSign, Eye, Ban, CheckCircle, Clock, XCircle, Copy, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 type AffiliateStatus = "active" | "pending" | "suspended";
 
@@ -21,15 +22,6 @@ interface Affiliate {
   status: AffiliateStatus;
 }
 
-const AFFILIATES: Affiliate[] = [
-  { id: "AFF-001", userId: "NF-1201", name: "Tosin Abiodun", email: "tosin@email.com", referralCode: "TOSIN20", totalReferrals: 47, activeReferrals: 31, totalEarned: "₦284,000", pendingPayout: "₦24,000", conversionRate: 66, joinedDate: "2025-09-12", status: "active" },
-  { id: "AFF-002", userId: "NF-2034", name: "Bimpe Adeyemi", email: "bimpe@email.com", referralCode: "BIMPE15", totalReferrals: 32, activeReferrals: 22, totalEarned: "₦176,000", pendingPayout: "₦16,000", conversionRate: 69, joinedDate: "2025-10-04", status: "active" },
-  { id: "AFF-003", userId: "NF-3190", name: "Kunle Osei", email: "kunle@email.com", referralCode: "KUNLE10", totalReferrals: 18, activeReferrals: 9, totalEarned: "₦76,000", pendingPayout: "₦8,000", conversionRate: 50, joinedDate: "2025-11-20", status: "active" },
-  { id: "AFF-004", userId: "NF-4442", name: "Nkechi Okafor", email: "nkechi@email.com", referralCode: "NKECHI5", totalReferrals: 8, activeReferrals: 0, totalEarned: "₦32,000", pendingPayout: "₦0", conversionRate: 0, joinedDate: "2025-12-01", status: "pending" },
-  { id: "AFF-005", userId: "NF-5301", name: "Dele Ojo", email: "dele@email.com", referralCode: "DELE25", totalReferrals: 61, activeReferrals: 44, totalEarned: "₦448,000", pendingPayout: "₦48,000", conversionRate: 72, joinedDate: "2025-08-05", status: "active" },
-  { id: "AFF-006", userId: "NF-6104", name: "Amaka Eze", email: "amaka@email.com", referralCode: "AMAKA30", totalReferrals: 14, activeReferrals: 0, totalEarned: "₦64,000", pendingPayout: "₦0", conversionRate: 0, joinedDate: "2025-10-15", status: "suspended" },
-];
-
 const STATUS_CONFIG: Record<AffiliateStatus, { label: string; icon: React.ComponentType<{size?: number; className?: string}>; color: string; bg: string; border: string }> = {
   active: { label: "Active", icon: CheckCircle, color: "text-[#00ffcc]", bg: "bg-[#00ffcc]/10", border: "border-[#00ffcc]/25" },
   pending: { label: "Pending", icon: Clock, color: "text-[#f59e0b]", bg: "bg-[#f59e0b]/10", border: "border-[#f59e0b]/25" },
@@ -41,36 +33,85 @@ interface AffiliatesViewProps {
 }
 
 export default function AffiliatesView({ onViewAffiliate }: AffiliatesViewProps = {}) {
-  const [affiliates, setAffiliates] = useState<Affiliate[]>(AFFILIATES);
+  const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AffiliateStatus>("all");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [totals, setTotals] = useState({ affiliates: 0, active: 0, referrals: 0, pendingPayouts: 0 });
 
-  const filtered = affiliates.filter((a) => {
-    const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase()) || a.email.toLowerCase().includes(search.toLowerCase()) || a.referralCode.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || a.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  useEffect(() => {
+    const fetchAffiliates = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        if (statusFilter !== "all") params.set("status", statusFilter);
+        
+        const res = await api.get(`admin/affiliates?${params.toString()}`);
+        const data = res.data.affiliates || [];
+        
+        // Map API response to component format
+        const mapped = data.map((a: any) => ({
+          id: a.id,
+          userId: a.userId || "N/A",
+          name: a.fullName || "Unknown",
+          email: a.email || "",
+          referralCode: a.referralCode || "",
+          totalReferrals: a.totalReferrals || 0,
+          activeReferrals: a.activeReferrals || 0,
+          totalEarned: `₦${Number(a.totalEarned || 0).toLocaleString()}`,
+          pendingPayout: `₦${Number(a.pendingPayout || 0).toLocaleString()}`,
+          conversionRate: a.conversionRate || 0,
+          joinedDate: a.createdAt ? new Date(a.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          status: a.status || "pending",
+        }));
+        
+        setAffiliates(mapped);
+        setTotals({
+          affiliates: res.data.totals?.total || 0,
+          active: res.data.totals?.active || 0,
+          referrals: mapped.reduce((sum: number, a: Affiliate) => sum + a.totalReferrals, 0),
+          pendingPayouts: mapped.filter((a: Affiliate) => a.pendingPayout !== "₦0").length,
+        });
+      } catch (err) {
+        console.error("Failed to fetch affiliates", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAffiliates();
+  }, [search, statusFilter]);
+
+  const filtered = affiliates;
 
   const copyCode = (code: string) => {
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 1500);
   };
 
-  const toggleSuspend = (id: string) => {
-    setAffiliates((prev) => prev.map((a) => a.id === id ? { ...a, status: a.status === "suspended" ? "active" : "suspended" } : a));
+  const toggleSuspend = async (id: string) => {
+    const affiliate = affiliates.find(a => a.id === id);
+    if (!affiliate) return;
+    
+    const newStatus = affiliate.status === "suspended" ? "active" : "suspended";
+    const endpoint = newStatus === "active" ? "activate" : "suspend";
+    
+    try {
+      await api.post(`admin/affiliates/${id}/${endpoint}`);
+      setAffiliates(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
+    } catch (err) {
+      console.error("Failed to update affiliate status", err);
+    }
   };
 
-  const activateAffiliate = (id: string) => {
-    setAffiliates((prev) => prev.map((a) => a.id === id ? { ...a, status: "active" as AffiliateStatus } : a));
-  };
-
-  const totals = {
-    affiliates: affiliates.length,
-    active: affiliates.filter((a) => a.status === "active").length,
-    referrals: affiliates.reduce((s, a) => s + a.totalReferrals, 0),
-    pendingPayouts: affiliates.filter((a) => a.pendingPayout !== "₦0").length,
+  const activateAffiliate = async (id: string) => {
+    try {
+      await api.post(`admin/affiliates/${id}/approve`);
+      setAffiliates(prev => prev.map(a => a.id === id ? { ...a, status: "active" as AffiliateStatus } : a));
+    } catch (err) {
+      console.error("Failed to approve affiliate", err);
+    }
   };
 
   return (
@@ -143,6 +184,16 @@ export default function AffiliatesView({ onViewAffiliate }: AffiliatesViewProps 
 
       {/* Table */}
       <div className="glass-card rounded-2xl overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 text-[#00ffcc] animate-spin" />
+            <span className="ml-2 text-[#b9cbc2]">Loading affiliates...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-[#b9cbc2]">
+            No affiliates found.
+          </div>
+        ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[#00ffcc]/08 text-left">
@@ -234,6 +285,7 @@ export default function AffiliatesView({ onViewAffiliate }: AffiliatesViewProps 
             })}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

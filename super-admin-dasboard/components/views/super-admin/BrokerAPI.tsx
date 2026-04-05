@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Server, Wifi, WifiOff, CheckCircle, XCircle, AlertTriangle,
   RefreshCw, Settings, Plus, Eye, ToggleLeft, ToggleRight,
   Activity, Zap, Clock, Link2, Edit3, Save, X,
 } from "lucide-react";
+import { api } from "@/lib/api";
 
 type BrokerConnection = {
   id: string;
@@ -29,61 +30,117 @@ type GroupMapping = {
   accountCount: number;
 };
 
-const initialConnections: BrokerConnection[] = [
-  { id: "b1", name: "NF-LIVE-01", server: "192.168.1.101:443", login: "nf_admin", token: "eyJ...X9z", status: "connected", latency: 42, lastSync: "8s ago", accountsManaged: 312, version: "MT5 Build 3820", env: "live" },
-  { id: "b2", name: "NF-LIVE-02", server: "192.168.1.102:443", login: "nf_admin", token: "eyJ...W2k", status: "connected", latency: 38, lastSync: "8s ago", accountsManaged: 289, version: "MT5 Build 3820", env: "live" },
-  { id: "b3", name: "NF-DEMO-01", server: "demo.noblefunded.com:443", login: "nf_demo", token: "eyJ...A1m", status: "connected", latency: 24, lastSync: "8s ago", accountsManaged: 420, version: "MT5 Build 3820", env: "demo" },
-  { id: "b4", name: "NF-DEMO-02", server: "demo2.noblefunded.com:443", login: "nf_demo2", token: "eyJ...B3p", status: "offline", latency: 0, lastSync: "12m ago", accountsManaged: 0, version: "MT5 Build 3815", env: "demo" },
-];
-
-const groupMappings: GroupMapping[] = [
-  { phase: "Phase 1", description: "First evaluation stage", brokerGroup: "NF_PHASE1", color: "#ffbc7c", accountCount: 312 },
-  { phase: "Phase 2", description: "Second evaluation stage", brokerGroup: "NF_PHASE2", color: "#60a5fa", accountCount: 188 },
-  { phase: "Funded Account", description: "Live funded trader", brokerGroup: "NF_FUNDED", color: "#00ffcc", accountCount: 94 },
-  { phase: "Free Trial", description: "Demo trial accounts", brokerGroup: "NF_TRIAL", color: "#a78bfa", accountCount: 220 },
+// Default group mappings
+const defaultGroupMappings: GroupMapping[] = [
+  { phase: "Phase 1", description: "First evaluation stage", brokerGroup: "NF_PHASE1", color: "#ffbc7c", accountCount: 0 },
+  { phase: "Phase 2", description: "Second evaluation stage", brokerGroup: "NF_PHASE2", color: "#60a5fa", accountCount: 0 },
+  { phase: "Funded Account", description: "Live funded trader", brokerGroup: "NF_FUNDED", color: "#00ffcc", accountCount: 0 },
+  { phase: "Free Trial", description: "Demo trial accounts", brokerGroup: "NF_TRIAL", color: "#a78bfa", accountCount: 0 },
 ];
 
 export default function BrokerAPI() {
-  const [connections, setConnections] = useState<BrokerConnection[]>(initialConnections);
+  const [connections, setConnections] = useState<BrokerConnection[]>([]);
+  const [mappings, setMappings] = useState<GroupMapping[]>(defaultGroupMappings);
+  const [loading, setLoading] = useState(true);
   const [pinging, setPinging] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
-  const [mappings, setMappings] = useState<GroupMapping[]>(groupMappings);
   const [newConn, setNewConn] = useState({ name: "", server: "", login: "", token: "", env: "live" as "live" | "demo" });
 
-  const pingConnection = (id: string) => {
+  const fetchBrokerData = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get("admin/broker-api");
+      const data = response.data;
+      
+      // Map backend config to frontend format
+      const brokers = data?.brokers || [];
+      const mappedConnections: BrokerConnection[] = brokers.map((b: any, i: number) => ({
+        id: b.id || `broker_${i}`,
+        name: b.name || `Broker ${i + 1}`,
+        server: b.server || "",
+        login: b.login || "",
+        token: b.token || "",
+        status: b.isConnected ? "connected" : "offline",
+        latency: b.latency || 0,
+        lastSync: b.lastSync || "never",
+        accountsManaged: b.accountsManaged || 0,
+        version: b.version || "MT5",
+        env: b.env || "live",
+      }));
+      
+      setConnections(mappedConnections);
+      
+      // Update group mappings with account counts from API
+      const updatedMappings = defaultGroupMappings.map((m, i) => ({
+        ...m,
+        accountCount: data?.groupCounts?.[i] || 0,
+      }));
+      setMappings(updatedMappings);
+    } catch (err) {
+      console.error("Failed to fetch broker config", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBrokerData();
+  }, []);
+
+  const pingConnection = async (id: string) => {
     setPinging(id);
-    setConnections((prev) => prev.map((c) => c.id === id ? { ...c, status: "connecting" } : c));
-    setTimeout(() => {
+    try {
+      const response = await api.post("admin/broker-api/test", { serverId: id });
+      const result = response.data;
+      
+      setConnections((prev) => prev.map((c) => 
+        c.id === id ? { 
+          ...c, 
+          status: result?.status === "connected" ? "connected" : "offline", 
+          latency: result?.latency || 0,
+          lastSync: "just now"
+        } : c
+      ));
+    } catch (err) {
+      console.error("Ping failed", err);
+      setConnections((prev) => prev.map((c) => 
+        c.id === id ? { ...c, status: "offline" } : c
+      ));
+    } finally {
       setPinging(null);
-      setConnections((prev) =>
-        prev.map((c) => c.id === id ? { ...c, status: "connected", latency: Math.floor(Math.random() * 80) + 20, lastSync: "just now" } : c)
-      );
-    }, 2000);
+    }
   };
 
-  const addConnection = () => {
+  const addConnection = async () => {
     if (!newConn.name || !newConn.server) return;
-    const conn: BrokerConnection = {
-      id: `b${Date.now()}`,
-      name: newConn.name,
-      server: newConn.server,
-      login: newConn.login,
-      token: newConn.token,
-      status: "offline",
-      latency: 0,
-      lastSync: "never",
-      accountsManaged: 0,
-      version: "MT5 Build 3820",
-      env: newConn.env,
-    };
-    setConnections([...connections, conn]);
-    setShowAddModal(false);
-    setNewConn({ name: "", server: "", login: "", token: "", env: "live" });
+    
+    try {
+      await api.post("admin/broker-api", {
+        name: newConn.name,
+        server: newConn.server,
+        login: newConn.login,
+        token: newConn.token,
+        env: newConn.env,
+      });
+      await fetchBrokerData();
+      setShowAddModal(false);
+      setNewConn({ name: "", server: "", login: "", token: "", env: "live" });
+    } catch (err) {
+      console.error("Failed to add broker", err);
+    }
   };
 
-  const updateGroupMapping = (phase: string, value: string) => {
-    setMappings((prev) => prev.map((m) => m.phase === phase ? { ...m, brokerGroup: value } : m));
+  const updateGroupMapping = async (phase: string, value: string) => {
+    try {
+      await api.put("admin/broker-api", {
+        groupMapping: { phase, brokerGroup: value }
+      });
+      setMappings((prev) => prev.map((m) => m.phase === phase ? { ...m, brokerGroup: value } : m));
+      setEditingGroup(null);
+    } catch (err) {
+      console.error("Failed to update group mapping", err);
+    }
   };
 
   const statusColor = { connected: "#34d399", connecting: "#ffbc7c", offline: "#ff6b6b" };

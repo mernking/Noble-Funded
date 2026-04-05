@@ -1,17 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FileBarChart, Download, Calendar, Filter, TrendingUp, Users, CreditCard, Trophy } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
+import { api } from "@/lib/api";
 
-const monthlyData = [
-  { month: "Jul", revenue: 320000, payouts: 145000, newUsers: 210, challenges: 88 },
-  { month: "Aug", revenue: 410000, payouts: 180000, newUsers: 248, challenges: 104 },
-  { month: "Sep", revenue: 480000, payouts: 210000, newUsers: 290, challenges: 122 },
-  { month: "Oct", revenue: 520000, payouts: 230000, newUsers: 312, challenges: 140 },
-  { month: "Nov", revenue: 610000, payouts: 270000, newUsers: 380, challenges: 162 },
-  { month: "Dec", revenue: 847000, payouts: 380000, newUsers: 442, challenges: 188 },
-];
+type ReportData = {
+  month: string;
+  revenue: number;
+  payouts: number;
+  newUsers: number;
+  challenges: number;
+};
 
 const REPORTS = [
   { id: "revenue", label: "Revenue Summary", icon: TrendingUp, desc: "Monthly gross revenue, net after payouts, and profit margins" },
@@ -23,6 +23,34 @@ const REPORTS = [
 export default function AdvancedReporting() {
   const [activeReport, setActiveReport] = useState("revenue");
   const [dateRange, setDateRange] = useState("6m");
+  const [monthlyData, setMonthlyData] = useState<ReportData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchReportData = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get(`admin/reports/advanced?range=${dateRange}`);
+      const data = response.data;
+      
+      setMonthlyData(data?.monthlyData || []);
+    } catch (err) {
+      console.error("Failed to fetch report data", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReportData();
+  }, [dateRange]);
+
+  const handleExport = async () => {
+    try {
+      await api.post("admin/reports/advanced/export", { range: dateRange, report: activeReport });
+    } catch (err) {
+      console.error("Failed to export report", err);
+    }
+  };
 
   return (
     <div className="page-fade space-y-5">

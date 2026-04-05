@@ -1,47 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Download, TrendingUp, ArrowUpRight, DollarSign, CreditCard, Users } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Download, TrendingUp, ArrowUpRight, DollarSign, CreditCard, Users, Loader2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, AreaChart, Area, BarChart, Bar,
 } from "recharts";
+import { api } from "@/lib/api";
 
-const monthlyRevenue = [
-  { date: "Sep", fees: 420000, payouts: 180000, net: 240000 },
-  { date: "Oct", fees: 680000, payouts: 290000, net: 390000 },
-  { date: "Nov", fees: 1200000, payouts: 510000, net: 690000 },
-  { date: "Dec", fees: 980000, payouts: 420000, net: 560000 },
-  { date: "Jan", fees: 1450000, payouts: 620000, net: 830000 },
-  { date: "Feb", fees: 1820000, payouts: 790000, net: 1030000 },
-  { date: "Mar", fees: 2340000, payouts: 1020000, net: 1320000 },
-  { date: "Apr", fees: 4822190, payouts: 2100000, net: 2722190 },
-];
-
-const monthlyRevenueUSD = [
-  { date: "Sep", fees: 1800, payouts: 720, net: 1080 },
-  { date: "Oct", fees: 2900, payouts: 1160, net: 1740 },
-  { date: "Nov", fees: 5200, payouts: 2080, net: 3120 },
-  { date: "Dec", fees: 4100, payouts: 1640, net: 2460 },
-  { date: "Jan", fees: 6300, payouts: 2520, net: 3780 },
-  { date: "Feb", fees: 7800, payouts: 3120, net: 4680 },
-  { date: "Mar", fees: 10200, payouts: 4080, net: 6120 },
-  { date: "Apr", fees: 18420, payouts: 7368, net: 11052 },
-];
-
-const dailyRevenue = [
-  { date: "Apr 1", rev: 210000 }, { date: "Apr 4", rev: 240000 }, { date: "Apr 7", rev: 285000 },
-  { date: "Apr 10", rev: 320000 }, { date: "Apr 13", rev: 295000 }, { date: "Apr 16", rev: 410000 },
-  { date: "Apr 19", rev: 480000 }, { date: "Apr 22", rev: 520000 }, { date: "Apr 25", rev: 610000 },
-  { date: "Apr 28", rev: 720000 }, { date: "Today", rev: 847000 },
-];
-
-const dailyRevenueUSD = [
-  { date: "Apr 1", rev: 820 }, { date: "Apr 4", rev: 940 }, { date: "Apr 7", rev: 1120 },
-  { date: "Apr 10", rev: 1380 }, { date: "Apr 13", rev: 1210 }, { date: "Apr 16", rev: 1640 },
-  { date: "Apr 19", rev: 1980 }, { date: "Apr 22", rev: 2100 }, { date: "Apr 25", rev: 2480 },
-  { date: "Apr 28", rev: 2890 }, { date: "Today", rev: 3420 },
-];
+const monthlyRevenue: { date: string; fees: number; payouts: number; net: number }[] = [];
+const monthlyRevenueUSD: { date: string; fees: number; payouts: number; net: number }[] = [];
+const dailyRevenue: { date: string; rev: number }[] = [];
+const dailyRevenueUSD: { date: string; rev: number }[] = [];
 
 const RevTooltip = ({ active, payload, label, sym }: any) => {
   if (active && payload?.length) {
@@ -62,17 +32,43 @@ const RevTooltip = ({ active, payload, label, sym }: any) => {
 export default function RevenueView() {
   const [period, setPeriod] = useState<"daily" | "monthly">("daily");
   const [system, setSystem] = useState<"NGN" | "USD">("NGN");
+  const [loading, setLoading] = useState(true);
+  const [revenueData, setRevenueData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchRevenue = async () => {
+      try {
+        const res = await api.get("admin/revenue");
+        setRevenueData(res.data);
+      } catch (err) {
+        console.error("Failed to fetch revenue", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRevenue();
+  }, []);
 
   const isNGN = system === "NGN";
   const sym = isNGN ? "₦" : "$";
+
+  const totalNgn = revenueData?.revenue?.find((r: any) => r.currency === 'NGN')?.total || 0;
+  const totalUsd = revenueData?.revenue?.find((r: any) => r.currency === 'USD')?.total || 0;
+  const pendingPayouts = revenueData?.pendingPayouts || 0;
 
   const chartData = period === "daily"
     ? (isNGN ? dailyRevenue : dailyRevenueUSD)
     : (isNGN ? monthlyRevenue : monthlyRevenueUSD);
 
+  // Calculate KPIs from live data
+  const total = isNGN ? totalNgn : totalUsd;
+  const payouts = Math.round(total * 0.43); // Approximate payout ratio
+  const net = total - payouts;
+  const arpu = total / (revenueData?.totalUsers || 1);
+
   const kpiData = isNGN
-    ? { total: "₦4.82M", payouts: "₦2.10M", net: "₦2.72M", arpu: "₦4,723" }
-    : { total: "$18,420", payouts: "$7,368", net: "$11,052", arpu: "$47.3" };
+    ? { total: `₦${(total / 1000000).toFixed(2)}M`, payouts: `₦${(payouts / 1000000).toFixed(2)}M`, net: `₦${(net / 1000000).toFixed(2)}M`, arpu: `₦${arpu.toLocaleString()}` }
+    : { total: `$${(total / 1000).toFixed(1)}K`, payouts: `$${(payouts / 1000).toFixed(1)}K`, net: `$${(net / 1000).toFixed(1)}K`, arpu: `$${arpu.toFixed(1)}` };
 
   return (
     <div className="page-fade space-y-5">

@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { ShieldCheck, Search, CheckCircle, XCircle, Clock, Eye, Download, AlertTriangle, X, FileText } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ShieldCheck, Search, CheckCircle, XCircle, Clock, Eye, Download, AlertTriangle, X, FileText, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 type KYCStatus = "pending" | "approved" | "rejected";
 type RiskLevel = "low" | "medium" | "high";
 
 interface KYCRecord {
   id: string;
+  userId?: string;
   name: string;
   email: string;
   country: string;
@@ -18,18 +20,6 @@ interface KYCRecord {
   risk: RiskLevel;
   docNote?: string;
 }
-
-const INITIAL_KYC: KYCRecord[] = [
-  { id: "KYC-001", name: "Alex Thorne", email: "alex.thorne@email.com", country: "Nigeria", doc: "National ID", submitted: "2024-12-01", status: "pending", risk: "low" },
-  { id: "KYC-002", name: "Jane Doe", email: "jane.doe@email.com", country: "Ghana", doc: "Passport", submitted: "2024-12-01", status: "approved", risk: "low" },
-  { id: "KYC-003", name: "Mark Smith", email: "mark.smith@email.com", country: "UK", doc: "Driver's License", submitted: "2024-11-30", status: "rejected", risk: "high", docNote: "Expired document — resubmission required." },
-  { id: "KYC-004", name: "Musa Okoro", email: "musa.okoro@email.com", country: "Nigeria", doc: "National ID", submitted: "2024-11-29", status: "pending", risk: "medium" },
-  { id: "KYC-005", name: "Sarah Jones", email: "sarah.jones@email.com", country: "South Africa", doc: "Passport", submitted: "2024-11-28", status: "approved", risk: "low" },
-  { id: "KYC-006", name: "Chen Wei", email: "chen.wei@email.com", country: "China", doc: "National ID", submitted: "2024-11-27", status: "pending", risk: "medium" },
-  { id: "KYC-007", name: "Fatima Al-Said", email: "fatima@email.com", country: "UAE", doc: "Passport", submitted: "2024-11-26", status: "approved", risk: "low" },
-  { id: "KYC-008", name: "Emeka Nwachukwu", email: "emeka.n@gmail.com", country: "Nigeria", doc: "National ID", submitted: "2024-11-25", status: "pending", risk: "low" },
-  { id: "KYC-009", name: "Sana Khan", email: "sana.k@outlook.com", country: "Pakistan", doc: "Passport", submitted: "2024-11-24", status: "pending", risk: "high" },
-];
 
 const statusColors: Record<KYCStatus, string> = {
   pending: "chip-warning",
@@ -49,33 +39,58 @@ interface RejectModal {
 }
 
 export default function KYCView({ onViewTrader }: { onViewTrader?: (id: string) => void } = {}) {
-  const [records, setRecords] = useState<KYCRecord[]>(INITIAL_KYC);
+  const [records, setRecords] = useState<KYCRecord[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | KYCStatus>("all");
   const [viewRecord, setViewRecord] = useState<KYCRecord | null>(null);
   const [rejectModal, setRejectModal] = useState<RejectModal | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
 
-  const filtered = records.filter((r) => {
-    const matchSearch = r.name.toLowerCase().includes(search.toLowerCase()) || r.email.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === "all" || r.status === filter;
-    return matchSearch && matchFilter;
-  });
+  useEffect(() => {
+    const fetchKYC = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        if (filter !== "all") params.set("status", filter);
+        
+        const res = await api.get(`admin/kyc?${params.toString()}`);
+        setRecords(res.data.records || []);
+        setCounts({
+          pending: res.data.totals?.pending || 0,
+          approved: res.data.totals?.approved || 0,
+          rejected: res.data.totals?.rejected || 0,
+        });
+      } catch (err) {
+        console.error("Failed to fetch KYC records", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchKYC();
+  }, [search, filter]);
 
-  const approve = (id: string) => {
-    setRecords((prev) => prev.map((r) => r.id === id ? { ...r, status: "approved" as KYCStatus } : r));
-    if (viewRecord?.id === id) setViewRecord((v) => v ? { ...v, status: "approved" } : null);
+  const filtered = records;
+
+  const approve = async (id: string) => {
+    try {
+      await api.post(`admin/kyc/${id}/approve`);
+      setRecords(prev => prev.map(r => r.id === id ? { ...r, status: "approved" as KYCStatus } : r));
+      if (viewRecord?.id === id) setViewRecord(v => v ? { ...v, status: "approved" } : null);
+    } catch (err) {
+      console.error("Failed to approve KYC", err);
+    }
   };
 
-  const reject = (id: string, reason: string) => {
-    setRecords((prev) => prev.map((r) => r.id === id ? { ...r, status: "rejected" as KYCStatus, docNote: reason || "Rejected by compliance team." } : r));
-    if (viewRecord?.id === id) setViewRecord((v) => v ? { ...v, status: "rejected", docNote: reason || "Rejected by compliance team." } : null);
-    setRejectModal(null);
-  };
-
-  const counts = {
-    pending: records.filter((r) => r.status === "pending").length,
-    approved: records.filter((r) => r.status === "approved").length,
-    rejected: records.filter((r) => r.status === "rejected").length,
+  const reject = async (id: string, reason: string) => {
+    try {
+      await api.post(`admin/kyc/${id}/reject`, { reason });
+      setRecords(prev => prev.map(r => r.id === id ? { ...r, status: "rejected" as KYCStatus, docNote: reason || "Rejected by compliance team." } : r));
+      if (viewRecord?.id === id) setViewRecord(v => v ? { ...v, status: "rejected", docNote: reason || "Rejected by compliance team." } : null);
+      setRejectModal(null);
+    } catch (err) {
+      console.error("Failed to reject KYC", err);
+    }
   };
 
   return (
