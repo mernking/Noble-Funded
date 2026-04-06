@@ -66,6 +66,10 @@ Added new API methods:
 - **Register & Pay Flow:** Added logic to create a user account (including password) simultaneously with payment initiation.
 - **Email Verification:** Integrated the 6-digit code verification step before allowing checkout.
 - **Payment Initiation:** Correctly passing `metadata` (accountSize, challengeType) to Flutterwave so the webhook can auto-provision the MT5 account.
+ - **Auto-login after payment:** Added a short-lived one-time token attached to each payment transaction and included in the Flutterwave redirect so the dashboard can exchange it for a JWT and auto-sign-in the user after payment (prevents guest/redirect logout issues).
+   - Schema: `transactions` now includes `one_time_token` and `one_time_token_expiry`.
+   - New endpoint: `POST /api/dev/auth/one-time-login` exchanges the token for a JWT and clears the token.
+   - Payment redirect now includes `?ot=<token>&ref=<tx_ref>` and lands on `/auth/finish` on the dashboard, which should call the exchange endpoint and set the user's session client-side.
 
 ### 🖥️ Super Admin Dashboard - LIVE API INTEGRATION
 
@@ -146,11 +150,13 @@ Added new API methods:
 - Fixed undefined mt5Login bug in payment webhook
 - Added real Flutterwave connection test
 - Payment gateway now shows real status
+ - Added "one-time-token" redirect flow so users are auto-logged-in on redirect after payment (helps cross-origin checkout → dashboard flows)
 
 **New User API endpoints created:**
 - `/api/dev/affiliates/me` - User affiliate data
 - `/api/dev/leaderboard` - Public leaderboard
 - `/api/dev/certificates` - User certificates
+ - `/api/dev/auth/one-time-login` - Exchange payment one-time token for JWT (used for redirect auto-login)
 
 **User Dashboard API integrations completed:**
 - Overview (greeting, accounts, payouts)

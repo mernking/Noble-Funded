@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
-import { users } from "@/db/schema.js";
+import { users, transactions } from "@/db/schema.js";
 import { emailService } from "@/services/email.service.js";
 
 export default async function authRoutes(fastify) {
@@ -165,11 +165,41 @@ export default async function authRoutes(fastify) {
       .select()
       .from(users)
       .where(eq(users.email, email.toLowerCase()));
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
     if (existing) {
+      // If an existing placeholder (no passwordHash) exists (sent by send-code), upgrade it
+      if (!existing.passwordHash) {
+        await db
+          .update(users)
+          .set({
+            fullName,
+            passwordHash,
+            phone,
+            provider: "email",
+            emailVerified: existing.emailVerified || true,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existing.id));
+
+        const [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, existing.id));
+
+        const token = generateToken(user);
+        emailService
+          .sendWelcomeEmail(user.email, user.fullName)
+          .catch((err) => fastify.log.error(err));
+
+        return fastify.ok(reply, { user, token }, 200);
+      }
+
+      // If already has a password, reject duplicate
       return fastify.fail(reply, 409, "DUPLICATE_EMAIL");
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
     const [user] = await db
       .insert(users)
       .values({
@@ -509,6 +539,52 @@ export default async function authRoutes(fastify) {
     },
   );
 
+  // POST /api/auth/one-time-login - exchange one-time token for JWT
+  fastify.post("/one-time-login", async (request, reply) => {
+    const { token } = request.body || {};
+    if (!token)
+      return fastify.fail(reply, 422, "VALIDATION_ERROR", "Token required");
+
+    const db = fastify.db;
+    // Find transaction with matching oneTimeToken that hasn't expired
+    const [txn] = await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.oneTimeToken, token));
+
+    if (!txn) return fastify.fail(reply, 404, "NOT_FOUND", "Token not found");
+
+    if (
+      !txn.oneTimeTokenExpiry ||
+      new Date() > new Date(txn.oneTimeTokenExpiry)
+    ) {
+      return fastify.fail(reply, 400, "EXPIRED", "Token expired");
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, txn.userId));
+
+    if (!user)
+      return fastify.fail(reply, 404, "USER_NOT_FOUND", "User not found");
+
+    // Generate JWT for the user
+    const jwt = generateToken(user);
+
+    // Clear the token so it cannot be reused
+    await db
+      .update(transactions)
+      .set({
+        oneTimeToken: null,
+        oneTimeTokenExpiry: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(transactions.id, txn.id));
+
+    return fastify.ok(reply, { user, token: jwt });
+  });
+
   // POST /api/auth/send-code - Send verification code to email
   fastify.post("/send-code", async (request, reply) => {
     const { email } = request.body || {};
@@ -520,29 +596,38 @@ export default async function authRoutes(fastify) {
     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     const db = fastify.db;
-    
+
     // Check if user exists
-    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
-    
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()));
+
     if (user) {
-      await db.update(users).set({ verificationCode: code, verificationCodeExpiry: expiry }).where(eq(users.id, user.id));
+      await db
+        .update(users)
+        .set({ verificationCode: code, verificationCodeExpiry: expiry })
+        .where(eq(users.id, user.id));
     } else {
-      // Create a temporary user or just send the code. 
+      // Create a temporary user or just send the code.
       // For now, let's allow sending code even if user doesn't exist (for checkout registration)
       // We can store it in a separate table if we want, but let's just use activity logs or a new table if needed.
       // Actually, let's just use the users table and create a placeholder user if needed, or just send it and verify against it.
       // Better: Create a placeholder user with role 'guest' if they don't exist.
-      await db.insert(users).values({
-        email: email.toLowerCase(),
-        fullName: "Guest",
-        role: "trader", // will be updated on register
-        status: "active",
-        verificationCode: code,
-        verificationCodeExpiry: expiry,
-      }).onConflictDoUpdate({
-        target: users.email,
-        set: { verificationCode: code, verificationCodeExpiry: expiry }
-      });
+      await db
+        .insert(users)
+        .values({
+          email: email.toLowerCase(),
+          fullName: "Guest",
+          role: "trader", // will be updated on register
+          status: "active",
+          verificationCode: code,
+          verificationCodeExpiry: expiry,
+        })
+        .onConflictDoUpdate({
+          target: users.email,
+          set: { verificationCode: code, verificationCodeExpiry: expiry },
+        });
     }
 
     // Send email
@@ -551,7 +636,12 @@ export default async function authRoutes(fastify) {
       return fastify.ok(reply, { message: "Verification code sent." });
     } catch (err) {
       fastify.log.error(err);
-      return fastify.fail(reply, 500, "EMAIL_ERROR", "Failed to send verification code.");
+      return fastify.fail(
+        reply,
+        500,
+        "EMAIL_ERROR",
+        "Failed to send verification code.",
+      );
     }
   });
 
@@ -559,18 +649,43 @@ export default async function authRoutes(fastify) {
   fastify.post("/verify-code", async (request, reply) => {
     const { email, code } = request.body || {};
     if (!email || !code) {
-      return fastify.fail(reply, 422, "VALIDATION_ERROR", "Email and code are required.");
+      return fastify.fail(
+        reply,
+        422,
+        "VALIDATION_ERROR",
+        "Email and code are required.",
+      );
     }
 
     const db = fastify.db;
-    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()));
 
-    if (!user || user.verificationCode !== code || !user.verificationCodeExpiry || new Date() > user.verificationCodeExpiry) {
-      return fastify.fail(reply, 400, "INVALID_CODE", "Invalid or expired verification code.");
+    if (
+      !user ||
+      user.verificationCode !== code ||
+      !user.verificationCodeExpiry ||
+      new Date() > user.verificationCodeExpiry
+    ) {
+      return fastify.fail(
+        reply,
+        400,
+        "INVALID_CODE",
+        "Invalid or expired verification code.",
+      );
     }
 
     // Mark as verified
-    await db.update(users).set({ emailVerified: true, verificationCode: null, verificationCodeExpiry: null }).where(eq(users.id, user.id));
+    await db
+      .update(users)
+      .set({
+        emailVerified: true,
+        verificationCode: null,
+        verificationCodeExpiry: null,
+      })
+      .where(eq(users.id, user.id));
 
     return fastify.ok(reply, { message: "Email verified successfully." });
   });

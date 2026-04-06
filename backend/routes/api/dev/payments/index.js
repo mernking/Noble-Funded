@@ -29,6 +29,11 @@ export default async function paymentsRoutes(fastify) {
       const db = fastify.db;
       const ref = `NF_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
+      // generate a one-time token for post-payment auto-login (short-lived)
+      const oneTimeToken =
+        Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const oneTimeExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
       const [transaction] = await db
         .insert(transactions)
         .values({
@@ -40,6 +45,8 @@ export default async function paymentsRoutes(fastify) {
           paymentProvider: "flutterwave",
           providerRef: ref,
           metadata: { ...metadata, challengeType, tier },
+          oneTimeToken,
+          oneTimeTokenExpiry: oneTimeExpiry,
         })
         .returning();
 
@@ -48,11 +55,14 @@ export default async function paymentsRoutes(fastify) {
       let paymentLink = "";
 
       try {
+        // Attach the one-time token and tx ref to redirect so dashboard can exchange it for a JWT
+        const dashboardRedirect = `${process.env.FRONTEND_URL || frontendUrl}/auth/finish?ot=${oneTimeToken}&ref=${encodeURIComponent(ref)}`;
+
         paymentLink = await paymentService.generatePaymentLink({
           tx_ref: ref,
           amount,
           currency,
-          redirect_url: `${frontendUrl}/dashboard/accounts`, // Redirect to accounts page
+          redirect_url: dashboardRedirect,
           customer: {
             email: request.user.email,
             name: request.user.fullName || "Trader",
@@ -135,7 +145,7 @@ export default async function paymentsRoutes(fastify) {
     const meta = transaction.metadata || {};
     const challengeType = meta.challengeType || "naira";
     const accountSizeStr = meta.accountSize || meta.tier || "0";
-    
+
     // Extract numeric balance from string like "₦200,000" or "$5,000" or just use the tier
     let startingBalance = 0;
     if (typeof accountSizeStr === "string") {
@@ -148,11 +158,19 @@ export default async function paymentsRoutes(fastify) {
       // Fallback to old tier logic if parsing fails
       startingBalance =
         challengeType === "naira"
-          ? meta.tier === 0 ? 200000 : meta.tier === 1 ? 500000 : 1000000
-          : meta.tier === 0 ? 15000 : meta.tier === 1 ? 50000 : 100000;
+          ? meta.tier === 0
+            ? 200000
+            : meta.tier === 1
+              ? 500000
+              : 1000000
+          : meta.tier === 0
+            ? 15000
+            : meta.tier === 1
+              ? 50000
+              : 100000;
     }
 
-    const profitTargetPct = challengeType === "naira" ? 0.10 : 0.10; // Phase 1 target
+    const profitTargetPct = challengeType === "naira" ? 0.1 : 0.1; // Phase 1 target
     const profitTarget = startingBalance * profitTargetPct;
 
     await db.insert(challenges).values({

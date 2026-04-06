@@ -90,6 +90,9 @@ export const transactions = pgTable("transactions", {
   paymentProvider: varchar("payment_provider", { length: 50 }),
   providerRef: varchar("provider_ref", { length: 100 }),
   metadata: jsonb("metadata"),
+  // One-time token used to allow redirect-based auto-login after payment
+  oneTimeToken: varchar("one_time_token", { length: 128 }),
+  oneTimeTokenExpiry: timestamp("one_time_token_expiry"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -175,12 +178,18 @@ export const systemSettings = pgTable("system_settings", {
 // ─── Affiliates ───────────────────────────────────────────────────────────────
 export const affiliates = pgTable("affiliates", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id).unique(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .unique(),
   referralCode: varchar("referral_code", { length: 20 }).unique().notNull(),
   totalReferrals: integer("total_referrals").default(0),
   activeReferrals: integer("active_referrals").default(0),
-  totalEarned: decimal("total_earned", { precision: 12, scale: 2 }).default("0"),
-  pendingPayout: decimal("pending_payout", { precision: 12, scale: 2 }).default("0"),
+  totalEarned: decimal("total_earned", { precision: 12, scale: 2 }).default(
+    "0",
+  ),
+  pendingPayout: decimal("pending_payout", { precision: 12, scale: 2 }).default(
+    "0",
+  ),
   conversionRate: integer("conversion_rate").default(0),
   status: varchar("status", { length: 20 }).default("pending"), // pending | active | suspended
   createdAt: timestamp("created_at").defaultNow(),
@@ -193,7 +202,12 @@ export const affiliateReferrals = pgTable("affiliate_referrals", {
   affiliateId: uuid("affiliate_id").references(() => affiliates.id),
   referredUserId: uuid("referred_user_id").references(() => users.id),
   referralDate: timestamp("referral_date").defaultNow(),
-  commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }).default("0"),
-  commissionStatus: varchar("commission_status", { length: 20 }).default("pending"), // pending | paid | cancelled
+  commissionAmount: decimal("commission_amount", {
+    precision: 12,
+    scale: 2,
+  }).default("0"),
+  commissionStatus: varchar("commission_status", { length: 20 }).default(
+    "pending",
+  ), // pending | paid | cancelled
   createdAt: timestamp("created_at").defaultNow(),
 });
