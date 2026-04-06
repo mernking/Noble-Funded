@@ -1,28 +1,50 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { DashboardShell } from "@/components/dashboard/shell"
 import {
-  mockAccounts,
   formatCurrency,
   getStatusLabel,
   getStatusClass,
+  TradingAccount,
 } from "@/lib/data"
+import { challenges } from "@/lib/api"
 import {
   Wallet,
   ShoppingCart,
   ChevronRight,
   AlertTriangle,
-  Filter,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export default function AccountsPage() {
   const [filter, setFilter] = useState<"all" | "naira" | "dollar">("all")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "challenge" | "failed">("all")
+  const [accounts, setAccounts] = useState<TradingAccount[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtered = mockAccounts.filter((a) => {
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const response = await challenges.getAll()
+        const accountData = Array.isArray(response) ? response : (response.data || response)
+        setAccounts(accountData)
+      } catch (err: any) {
+        console.error("Failed to fetch accounts:", err)
+        setError(err.message || "Failed to load accounts")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchAccounts()
+  }, [])
+
+  const filtered = accounts.filter((a) => {
     const typeMatch = filter === "all" || (filter === "naira" ? a.type === "naira" : a.type === "dollar")
     const statusMatch =
       statusFilter === "all" ||
@@ -35,83 +57,113 @@ export default function AccountsPage() {
   return (
     <DashboardShell title="My Accounts" subtitle="Manage all your trading accounts">
       <div className="p-4 lg:p-6 space-y-6">
-        {/* Header actions */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Type filter */}
-            <div className="flex items-center gap-1 p-1 glass-card rounded-lg">
-              {(["all", "naira", "dollar"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
-                    filter === f
-                      ? "bg-[#5eead4] text-[#071210]"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {f === "all" ? "All" : f === "naira" ? "Naira ₦" : "Dollar $"}
-                </button>
-              ))}
-            </div>
-            {/* Status filter */}
-            <div className="flex items-center gap-1 p-1 glass-card rounded-lg">
-              {(["all", "active", "challenge", "failed"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setStatusFilter(f)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize",
-                    statusFilter === f
-                      ? "bg-[rgba(167,255,235,0.15)] text-[#a7ffeb]"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {f}
-                </button>
-              ))}
+        {/* Loading state */}
+        {loading && (
+          <div className="flex items-center justify-center min-h-[300px]">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">Loading your accounts...</p>
             </div>
           </div>
-          <Link
-            href="https://noble-frontend-lilac.vercel.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#071210] bg-[#5eead4] hover:bg-[#2dd4bf] transition-all shadow-lg"
-            style={{ boxShadow: "0 0 20px rgba(94,234,212,0.25)" }}
-          >
-            <ShoppingCart size={15} />
-            Buy New Challenge
-          </Link>
-        </div>
+        )}
 
-        {/* Stats summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Total Accounts", value: mockAccounts.length, color: "text-foreground" },
-            { label: "Funded", value: mockAccounts.filter(a => a.status === "funded").length, color: "text-[#4ade80]" },
-            { label: "In Challenge", value: mockAccounts.filter(a => a.status.startsWith("challenge")).length, color: "text-[#fbbf24]" },
-            { label: "Failed", value: mockAccounts.filter(a => a.status === "failed").length, color: "text-[#f87171]" },
-          ].map((s) => (
-            <div key={s.label} className="glass-card p-4 text-center">
-              <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+        {/* Error state */}
+        {!loading && error && (
+          <div className="glass-card p-8 text-center border-[rgba(248,113,113,0.3)]">
+            <AlertTriangle className="w-10 h-10 text-[#f87171] mx-auto mb-3" />
+            <p className="font-semibold text-foreground mb-1">Failed to load accounts</p>
+            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#5eead4] text-[#071210] hover:bg-[#2dd4bf] transition-all"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Content */}
+        {!loading && !error && (
+          <>
+            {/* Header actions */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Type filter */}
+                <div className="flex items-center gap-1 p-1 glass-card rounded-lg">
+                  {(["all", "naira", "dollar"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                        filter === f
+                          ? "bg-[#5eead4] text-[#071210]"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {f === "all" ? "All" : f === "naira" ? "Naira ₦" : "Dollar $"}
+                    </button>
+                  ))}
+                </div>
+                {/* Status filter */}
+                <div className="flex items-center gap-1 p-1 glass-card rounded-lg">
+                  {(["all", "active", "challenge", "failed"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setStatusFilter(f)}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize",
+                        statusFilter === f
+                          ? "bg-[rgba(167,255,235,0.15)] text-[#a7ffeb]"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Link
+                href="https://noble-frontend-lilac.vercel.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#071210] bg-[#5eead4] hover:bg-[#2dd4bf] transition-all shadow-lg"
+                style={{ boxShadow: "0 0 20px rgba(94,234,212,0.25)" }}
+              >
+                <ShoppingCart size={15} />
+                Buy New Challenge
+              </Link>
             </div>
-          ))}
-        </div>
+
+            {/* Stats summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: "Total Accounts", value: accounts.length, color: "text-foreground" },
+                { label: "Funded", value: accounts.filter(a => a.status === "funded").length, color: "text-[#4ade80]" },
+                { label: "In Challenge", value: accounts.filter(a => a.status.startsWith("challenge")).length, color: "text-[#fbbf24]" },
+                { label: "Failed", value: accounts.filter(a => a.status === "failed").length, color: "text-[#f87171]" },
+              ].map((s) => (
+                <div key={s.label} className="glass-card p-4 text-center">
+                  <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {/* Accounts list */}
-        {filtered.length === 0 ? (
+        {!loading && !error && filtered.length === 0 && (
           <div className="glass-card p-12 text-center">
             <Wallet className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
             <p className="font-semibold text-foreground">No accounts found</p>
             <p className="text-sm text-muted-foreground mt-1">Try changing your filters or buy a new challenge.</p>
           </div>
-        ) : (
+        )}
+
+        {!loading && !error && filtered.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((account) => {
-              const progressPct = Math.min(100, (account.currentProfit / account.profitTarget) * 100)
-              const drawdownPct = Math.min(100, (account.currentOverallDrawdown / account.maxOverallDrawdown) * 100)
               const isNaira = account.currency === "NGN"
 
               return (
@@ -175,14 +227,11 @@ export default function AccountsPage() {
                   {/* Progress */}
                   {account.status !== "failed" && (
                     <div className="space-y-2.5 mb-4">
-                      {/* Profit progress — show current vs target */}
+                      {/* Profit progress */}
                       <div>
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-muted-foreground">
-                            Profit Target ({account.profitTarget}%
-                            {/* For dollar phase 2, annotate it's 5% */}
-                            {account.type === "dollar" && account.phase === 2 ? " — Phase 2" : ""}
-                            )
+                            Profit Target ({account.profitTarget}%)
                           </span>
                           <span className={cn("font-medium", account.currentProfit >= account.profitTarget ? "text-[#4ade80]" : "text-foreground")}>
                             {account.currentProfit.toFixed(2)}%
@@ -202,10 +251,7 @@ export default function AccountsPage() {
                             </span>
                           </div>
                           <div className="progress-bar">
-                            <div
-                              className={cn("progress-bar-fill", (account.currentDailyDrawdown / account.maxDailyDrawdown) > 0.7 ? "progress-bar-danger" : (account.currentDailyDrawdown / account.maxDailyDrawdown) > 0.4 ? "progress-bar-warning" : "")}
-                              style={{ width: `${Math.max(0, Math.min(100, (account.currentDailyDrawdown / account.maxDailyDrawdown) * 100))}%` }}
-                            />
+                            <div className="progress-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (account.currentDailyDrawdown / account.maxDailyDrawdown) * 100))}%` }} />
                           </div>
                         </div>
                       )}
@@ -224,10 +270,7 @@ export default function AccountsPage() {
                           </span>
                         </div>
                         <div className="progress-bar">
-                          <div
-                            className={cn("progress-bar-fill", (account.currentOverallDrawdown / account.maxOverallDrawdown) > 0.7 ? "progress-bar-danger" : (account.currentOverallDrawdown / account.maxOverallDrawdown) > 0.4 ? "progress-bar-warning" : "")}
-                            style={{ width: `${Math.max(0, Math.min(100, (account.currentOverallDrawdown / account.maxOverallDrawdown) * 100))}%` }}
-                          />
+                          <div className="progress-bar-fill" style={{ width: `${Math.max(0, Math.min(100, (account.currentOverallDrawdown / account.maxOverallDrawdown) * 100))}%` }} />
                         </div>
                       </div>
                     </div>

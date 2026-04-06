@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardShell } from "@/components/dashboard/shell"
-import { mockAffiliate, formatCurrency, nairaChallengePricing, dollarChallengePricing } from "@/lib/data"
+import { formatCurrency, nairaChallengePricing, dollarChallengePricing } from "@/lib/data"
+import { affiliate } from "@/lib/api"
 import {
   Copy,
   CheckCircle2,
@@ -20,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -51,10 +53,55 @@ const rules = [
   "Affiliate accounts inactive for 6 months will be closed.",
 ]
 
+interface AffiliateData {
+  id?: string
+  referralCode?: string
+  referralLink?: string
+  totalReferrals?: number
+  activeReferrals?: number
+  totalEarned?: number
+  pendingPayout?: number
+  conversionRate?: number
+  status?: string
+}
+
+interface Referral {
+  id: string
+  name: string
+  email?: string
+  joinedAt: string
+  status: string
+  commission: number
+  currency: string
+}
+
 export default function AffiliatePage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [commTab, setCommTab] = useState<"naira" | "dollar">("naira")
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [affiliateData, setAffiliateData] = useState<AffiliateData | null>(null)
+  const [referrals, setReferrals] = useState<Referral[]>([])
+  const [enrolling, setEnrolling] = useState(false)
+
+  useEffect(() => {
+    const fetchAffiliateData = async () => {
+      try {
+        setLoading(true)
+        const [dataRes, refsRes] = await Promise.all([
+          affiliate.getData(),
+          affiliate.getReferrals()
+        ])
+        setAffiliateData(dataRes.data || dataRes)
+        setReferrals((refsRes.data || refsRes) || [])
+      } catch (err) {
+        console.error("Failed to fetch affiliate data:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchAffiliateData()
+  }, [])
 
   const copy = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -62,10 +109,129 @@ export default function AffiliatePage() {
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const activeReferrals = mockAffiliate.referrals.filter(r => r.status === "active")
-  const pendingReferrals = mockAffiliate.referrals.filter(r => r.status === "pending")
-  const ngnEarnings = mockAffiliate.referrals.filter(r => r.currency === "NGN").reduce((s, r) => s + r.commission, 0)
-  const usdEarnings = mockAffiliate.referrals.filter(r => r.currency === "USD").reduce((s, r) => s + r.commission, 0)
+  const handleEnroll = async () => {
+    try {
+      setEnrolling(true)
+      await affiliate.generateCode()
+      // Refresh data after enrolling
+      const [dataRes, refsRes] = await Promise.all([
+        affiliate.getData(),
+        affiliate.getReferrals()
+      ])
+      setAffiliateData(dataRes.data || dataRes)
+      setReferrals((refsRes.data || refsRes) || [])
+    } catch (err) {
+      console.error("Failed to enroll:", err)
+    } finally {
+      setEnrolling(false)
+    }
+  }
+
+  const activeReferralsCount = referrals.filter(r => r.status === "converted").length
+  const pendingReferralsCount = referrals.filter(r => r.status === "pending").length
+  const ngnEarnings = affiliateData?.totalEarned || 0
+
+  if (loading) {
+    return (
+      <DashboardShell title="Affiliate Program" subtitle="Refer traders and earn commissions on every challenge purchase">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading affiliate data...</p>
+          </div>
+        </div>
+      </DashboardShell>
+    )
+  }
+
+  // If not enrolled, show enrollment prompt
+  if (!affiliateData) {
+    return (
+      <DashboardShell title="Affiliate Program" subtitle="Refer traders and earn commissions on every challenge purchase">
+        <div className="p-4 lg:p-6 space-y-6 page-fade-in">
+          {/* Hero Banner */}
+          <div className="glass-card p-6 relative overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 80% 50%, rgba(13,148,136,0.22) 0%, transparent 60%)" }} />
+            <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Gift className="w-5 h-5 text-[#5eead4]" />
+                  <span className="text-xs font-bold text-[#5eead4] uppercase tracking-wider">Noble Funded Affiliate Program</span>
+                </div>
+                <h2 className="text-2xl font-bold text-foreground text-balance">Refer Traders. Earn Naira.</h2>
+                <p className="text-sm text-muted-foreground mt-1.5 max-w-lg">
+                  Share your unique referral link and get paid every time someone you refer buys a challenge. Earn 10% commission, up to 15% for top affiliates.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Enrollment Card */}
+          <div className="glass-card p-8 text-center">
+            <Gift className="w-12 h-12 text-[#5eead4] mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-foreground mb-2">Join Our Affiliate Program</h3>
+            <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+              Start earning by referring traders to Noble Funded. It's free to join and you can start earning immediately.
+            </p>
+            <button
+              onClick={handleEnroll}
+              disabled={enrolling}
+              className="px-6 py-2.5 rounded-xl text-sm font-bold text-[#071210] bg-[#5eead4] hover:bg-[#2dd4bf] transition-all disabled:opacity-50"
+              style={{ boxShadow: "0 0 20px rgba(94,234,212,0.3)" }}
+            >
+              {enrolling ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Joining...
+                </span>
+              ) : (
+                "Become an Affiliate"
+              )}
+            </button>
+          </div>
+
+          {/* FAQ & Rules */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="glass-card p-5">
+              <h3 className="font-bold text-foreground mb-4">Frequently Asked Questions</h3>
+              <div className="space-y-2">
+                {faqs.map((faq, i) => (
+                  <div key={i} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(94,234,212,0.1)" }}>
+                    <button
+                      onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[rgba(20,184,166,0.05)] transition-colors"
+                    >
+                      <span className="text-sm font-medium text-foreground pr-4">{faq.q}</span>
+                      {openFaq === i ? <ChevronUp size={15} className="text-[#5eead4] shrink-0" /> : <ChevronDown size={15} className="text-muted-foreground shrink-0" />}
+                    </button>
+                    {openFaq === i && (
+                      <div className="px-4 pb-3" style={{ borderTop: "1px solid rgba(94,234,212,0.07)" }}>
+                        <p className="text-xs text-muted-foreground pt-3 leading-relaxed">{faq.a}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="glass-card p-5">
+              <h3 className="font-bold text-foreground mb-4">Programme Rules</h3>
+              <ol className="space-y-3">
+                {rules.map((rule, i) => (
+                  <li key={i} className="flex gap-3 text-sm">
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-[#5eead4] shrink-0 mt-0.5" style={{ background: "rgba(20,184,166,0.14)", border: "1px solid rgba(94,234,212,0.18)" }}>
+                      {i + 1}
+                    </span>
+                    <span className="text-muted-foreground leading-relaxed">{rule}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        </div>
+      </DashboardShell>
+    )
+  }
 
   return (
     <DashboardShell title="Affiliate Program" subtitle="Refer traders and earn commissions on every challenge purchase">
@@ -88,7 +254,6 @@ export default function AffiliatePage() {
             <div className="text-right shrink-0">
               <div className="space-y-1">
                 <p className="text-2xl font-black text-[#5eead4]">{formatCurrency(ngnEarnings, "NGN")}</p>
-                {usdEarnings > 0 && <p className="text-lg font-bold text-[#4ade80]">${usdEarnings.toFixed(2)} USD</p>}
                 <p className="text-xs text-muted-foreground">Total Commissions Earned</p>
               </div>
             </div>
@@ -98,9 +263,9 @@ export default function AffiliatePage() {
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total Referrals", value: mockAffiliate.totalReferrals, icon: Users, color: "text-foreground" },
-            { label: "Active Referrals", value: activeReferrals.length, icon: Zap, color: "text-[#4ade80]" },
-            { label: "Pending", value: pendingReferrals.length, icon: Clock, color: "text-[#fbbf24]" },
+            { label: "Total Referrals", value: affiliateData.totalReferrals || 0, icon: Users, color: "text-foreground" },
+            { label: "Active Referrals", value: activeReferralsCount, icon: Zap, color: "text-[#4ade80]" },
+            { label: "Pending", value: pendingReferralsCount, icon: Clock, color: "text-[#fbbf24]" },
             { label: "Commission Rate", value: "10%", icon: DollarSign, color: "text-[#5eead4]" },
           ].map((s) => (
             <div key={s.label} className="glass-card p-4">
@@ -129,8 +294,8 @@ export default function AffiliatePage() {
                 <div>
                   <p className="text-xs text-muted-foreground mb-1.5">Referral Code</p>
                   <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: "rgba(13,148,136,0.08)", border: "1px solid rgba(94,234,212,0.14)" }}>
-                    <span className="font-mono font-bold text-[#5eead4] flex-1">{mockAffiliate.referralCode}</span>
-                    <button onClick={() => copy(mockAffiliate.referralCode, "code")} className="text-muted-foreground hover:text-[#5eead4] transition-colors shrink-0">
+                    <span className="font-mono font-bold text-[#5eead4] flex-1">{affiliateData.referralCode || "—"}</span>
+                    <button onClick={() => copy(affiliateData.referralCode || "", "code")} className="text-muted-foreground hover:text-[#5eead4] transition-colors shrink-0">
                       {copied === "code" ? <CheckCircle2 size={15} className="text-[#4ade80]" /> : <Copy size={15} />}
                     </button>
                   </div>
@@ -138,12 +303,12 @@ export default function AffiliatePage() {
                 <div>
                   <p className="text-xs text-muted-foreground mb-1.5">Referral Link</p>
                   <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: "rgba(13,148,136,0.08)", border: "1px solid rgba(94,234,212,0.14)" }}>
-                    <span className="font-mono text-xs text-muted-foreground flex-1 truncate">{mockAffiliate.referralLink}</span>
+                    <span className="font-mono text-xs text-muted-foreground flex-1 truncate">{affiliateData.referralLink || "—"}</span>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => copy(mockAffiliate.referralLink, "link")} className="text-muted-foreground hover:text-[#5eead4] transition-colors">
+                      <button onClick={() => copy(affiliateData.referralLink || "", "link")} className="text-muted-foreground hover:text-[#5eead4] transition-colors">
                         {copied === "link" ? <CheckCircle2 size={15} className="text-[#4ade80]" /> : <Copy size={15} />}
                       </button>
-                      <a href={mockAffiliate.referralLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-[#5eead4] transition-colors">
+                      <a href={affiliateData.referralLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-[#5eead4] transition-colors">
                         <ExternalLink size={15} />
                       </a>
                     </div>
@@ -155,9 +320,9 @@ export default function AffiliatePage() {
                 <p className="text-xs text-muted-foreground mb-2.5">Share via</p>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: "WhatsApp", href: `https://wa.me/?text=Start%20your%20funded%20trading%20journey%20with%20Noble%20Funded!%20Use%20my%20referral%20link:%20${mockAffiliate.referralLink}`, color: "bg-[rgba(37,211,102,0.1)] text-[#25d366] hover:bg-[rgba(37,211,102,0.18)]" },
-                    { label: "Telegram", href: `https://t.me/share/url?url=${mockAffiliate.referralLink}&text=Join%20Noble%20Funded%20with%20my%20referral%20link!`, color: "bg-[rgba(0,136,204,0.1)] text-[#0088cc] hover:bg-[rgba(0,136,204,0.18)]" },
-                    { label: "Twitter/X", href: `https://twitter.com/intent/tweet?text=I%20just%20got%20funded%20with%20@NobleFunded!%20Join%20me%20here:%20${mockAffiliate.referralLink}`, color: "bg-[rgba(167,255,235,0.08)] text-[#a7ffeb] hover:bg-[rgba(167,255,235,0.15)]" },
+                    { label: "WhatsApp", href: `https://wa.me/?text=Start%20your%20funded%20trading%20journey%20with%20Noble%20Funded!%20Use%20my%20referral%20link:%20${affiliateData.referralLink}`, color: "bg-[rgba(37,211,102,0.1)] text-[#25d366] hover:bg-[rgba(37,211,102,0.18)]" },
+                    { label: "Telegram", href: `https://t.me/share/url?url=${affiliateData.referralLink}&text=Join%20Noble%20Funded%20with%20my%20referral%20link!`, color: "bg-[rgba(0,136,204,0.1)] text-[#0088cc] hover:bg-[rgba(0,136,204,0.18)]" },
+                    { label: "Twitter/X", href: `https://twitter.com/intent/tweet?text=I%20just%20got%20funded%20with%20@NobleFunded!%20Join%20me%20here:%20${affiliateData.referralLink}`, color: "bg-[rgba(167,255,235,0.08)] text-[#a7ffeb] hover:bg-[rgba(167,255,235,0.15)]" },
                   ].map((s) => (
                     <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" className={cn("py-2 rounded-lg text-xs font-medium transition-all border border-[rgba(94,234,212,0.1)] text-center", s.color)}>
                       {s.label}
@@ -291,79 +456,63 @@ export default function AffiliatePage() {
             <div className="glass-table overflow-hidden">
               <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(94,234,212,0.1)" }}>
                 <h3 className="font-bold text-foreground">My Referrals</h3>
-                <span className="text-xs text-muted-foreground">{mockAffiliate.referrals.length} total</span>
+                <span className="text-xs text-muted-foreground">{referrals.length} total</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(94,234,212,0.08)" }}>
-                      {["Trader", "Email", "Joined", "Status", "Commission"].map((h) => (
-                        <th key={h} className="text-left text-xs text-muted-foreground font-medium px-4 py-3 whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mockAffiliate.referrals.map((r) => (
-                      <tr key={r.id} className="glass-row transition-colors" style={{ borderBottom: "1px solid rgba(94,234,212,0.05)" }}>
-                        <td className="px-4 py-3 font-semibold text-foreground whitespace-nowrap">{r.name}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{r.email}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(r.joinedAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
-                            r.status === "active" ? "badge-active" :
-                            r.status === "converted" ? "badge-dollar" :
-                            "badge-challenge"
-                          )}>
-                            {r.status === "active" ? "Active" : r.status === "converted" ? "Purchased" : "Pending"}
-                          </span>
-                        </td>
-                        <td className={cn("px-4 py-3 font-bold whitespace-nowrap", r.commission > 0 ? "text-[#4ade80]" : "text-muted-foreground")}>
-                          {r.commission > 0
-                            ? r.currency === "NGN"
-                              ? formatCurrency(r.commission, "NGN")
-                              : `$${r.commission.toFixed(2)}`
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-5 py-3 flex justify-between items-center" style={{ borderTop: "1px solid rgba(94,234,212,0.1)" }}>
-                <span className="text-sm text-muted-foreground">NGN Earned</span>
-                <div className="flex items-center gap-4">
-                  {usdEarnings > 0 && <span className="font-bold text-[#5eead4]">${usdEarnings.toFixed(2)} USD</span>}
-                  <span className="font-bold text-[#4ade80] text-lg">{formatCurrency(ngnEarnings, "NGN")}</span>
+              {referrals.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">No referrals yet. Share your link to start earning!</p>
                 </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(94,234,212,0.08)" }}>
+                        {["Trader", "Email", "Joined", "Status", "Commission"].map((h) => (
+                          <th key={h} className="text-left text-xs text-muted-foreground font-medium px-4 py-3 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {referrals.map((r) => (
+                        <tr key={r.id} className="glass-row transition-colors" style={{ borderBottom: "1px solid rgba(94,234,212,0.05)" }}>
+                          <td className="px-4 py-3 font-semibold text-foreground whitespace-nowrap">{r.name}</td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">{r.email || "—"}</td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(r.joinedAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
+                              r.status === "converted" ? "badge-active" :
+                              r.status === "pending" ? "badge-challenge" :
+                              "badge-naira"
+                            )}>
+                              {r.status === "converted" ? "Active" : r.status === "pending" ? "Pending" : r.status}
+                            </span>
+                          </td>
+                          <td className={cn("px-4 py-3 font-bold whitespace-nowrap", r.commission > 0 ? "text-[#4ade80]" : "text-muted-foreground")}>
+                            {r.commission > 0
+                              ? r.currency === "NGN"
+                                ? formatCurrency(r.commission, "NGN")
+                                : `$${r.commission.toFixed(2)}`
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="px-5 py-3 flex justify-between items-center" style={{ borderTop: "1px solid rgba(94,234,212,0.1)" }}>
+                <span className="text-sm text-muted-foreground">Total Earned</span>
+                <span className="font-bold text-[#4ade80] text-lg">{formatCurrency(ngnEarnings, "NGN")}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Earnings Examples */}
-        <div className="glass-card p-5">
-          <h3 className="font-bold text-foreground mb-4">Earnings Examples</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { title: "Casual Referrer", desc: "5 friends buy the ₦400,000 challenge (₦19,000 fee)", result: "5 × ₦1,900 = ₦9,500/mo", color: "text-[#5eead4]" },
-              { title: "Active Promoter", desc: "20 referrals — mix of Naira & Dollar accounts", result: "~₦29,000 + $220/mo", color: "text-[#fbbf24]" },
-              { title: "Content Creator (Gold)", desc: "55 referrals via YouTube/TikTok this month", result: "~₦150K–₦300K/mo + Free ₦400K Challenge", color: "text-[#c0c0c0]" },
-              { title: "Community Leader (Diamond)", desc: "110 referrals from Telegram group of 5,000", result: "₦400K+ commissions + 2 Free Challenges", color: "text-[#5eead4]" },
-            ].map((ex) => (
-              <div key={ex.title} className="rounded-xl p-4" style={{ background: "rgba(13,148,136,0.07)", border: "1px solid rgba(94,234,212,0.12)" }}>
-                <p className="text-sm font-bold text-foreground mb-1">{ex.title}</p>
-                <p className="text-xs text-muted-foreground mb-2">{ex.desc}</p>
-                <p className={cn("text-sm font-bold", ex.color)}>{ex.result}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* FAQ & Rules */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* FAQ */}
           <div className="glass-card p-5">
             <h3 className="font-bold text-foreground mb-4">Frequently Asked Questions</h3>
             <div className="space-y-2">
@@ -386,7 +535,6 @@ export default function AffiliatePage() {
             </div>
           </div>
 
-          {/* Programme Rules */}
           <div className="glass-card p-5">
             <h3 className="font-bold text-foreground mb-4">Programme Rules</h3>
             <ol className="space-y-3">
@@ -418,7 +566,7 @@ export default function AffiliatePage() {
                 className="px-6 py-2.5 rounded-xl text-sm font-bold text-[#071210] bg-[#5eead4] hover:bg-[#2dd4bf] transition-all"
                 style={{ boxShadow: "0 0 20px rgba(94,234,212,0.3)" }}
               >
-                Become an Affiliate
+                Learn More
               </a>
               <a
                 href="https://discord.gg"

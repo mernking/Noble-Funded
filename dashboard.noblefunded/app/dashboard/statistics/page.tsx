@@ -1,15 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardShell } from "@/components/dashboard/shell"
-import {
-  mockAccounts,
-  formatCurrency,
-  generateEquityCurve,
-  weeklyProfitData,
-  monthlyProfitData,
-  instrumentBreakdown,
-} from "@/lib/data"
+import { formatCurrency, TradingAccount } from "@/lib/data"
+import { challenges } from "@/lib/api"
 import {
   AreaChart,
   Area,
@@ -23,59 +17,78 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  Legend,
-  ScatterChart,
-  Scatter,
 } from "recharts"
-import { TrendingUp, TrendingDown, BarChart3, Percent, Activity } from "lucide-react"
+import { TrendingUp, TrendingDown, BarChart3, Percent, Activity, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const allTrades = mockAccounts.flatMap((a) => a.trades.map((t) => ({ ...t, accountId: a.id, accountType: a.type })))
-
-const equity30 = generateEquityCurve(30, 100000, 0.025)
-const equity60 = generateEquityCurve(60, 100000, 0.022)
 
 export default function StatisticsPage() {
   const [selectedAccount, setSelectedAccount] = useState<string>("all")
   const [period, setPeriod] = useState<"7d" | "30d" | "60d">("30d")
+  const [accounts, setAccounts] = useState<TradingAccount[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const trades = selectedAccount === "all"
-    ? allTrades
-    : allTrades.filter((t) => t.accountId === selectedAccount)
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await challenges.getAll()
+        const accountData = Array.isArray(response) ? response : (response.data || response)
+        setAccounts(accountData)
+      } catch (err) {
+        console.error("Failed to fetch accounts:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
 
-  const winTrades = trades.filter((t) => t.profit > 0)
-  const lossTrades = trades.filter((t) => t.profit <= 0)
-  const winRate = trades.length > 0 ? ((winTrades.length / trades.length) * 100).toFixed(1) : "0"
-  const totalPnL = trades.reduce((s, t) => s + t.profit, 0)
-  const avgWin = winTrades.length > 0 ? winTrades.reduce((s, t) => s + t.profit, 0) / winTrades.length : 0
-  const avgLoss = lossTrades.length > 0 ? Math.abs(lossTrades.reduce((s, t) => s + t.profit, 0) / lossTrades.length) : 1
-  const profitFactor = (avgLoss !== 0 ? avgWin / avgLoss : 0).toFixed(2)
+  const activeAccounts = accounts.filter((a) => a.status !== "failed" && a.status !== "failed")
+  const nairaAccounts = activeAccounts.filter((a) => a.type === "naira")
+  const dollarAccounts = activeAccounts.filter((a) => a.type === "dollar")
 
-  const equityData = period === "7d" ? equity30.slice(-7) : period === "30d" ? equity30 : equity60
+  const totalProfit = activeAccounts.reduce((sum, acc) => sum + acc.currentProfit, 0)
+  const avgProfit = activeAccounts.length > 0 ? totalProfit / activeAccounts.length : 0
+  const winRate = activeAccounts.filter(a => a.currentProfit >= 0).length
+  const winRatePct = activeAccounts.length > 0 ? (winRate / activeAccounts.length) * 100 : 0
+  
+  // Equity curve mock data
+  const equityData = period === "7d" 
+    ? Array.from({ length: 7 }, (_, i) => ({ date: `Day ${i+1}`, balance: 800000 + Math.random() * 50000 }))
+    : period === "30d"
+    ? Array.from({ length: 30 }, (_, i) => ({ date: `Day ${i+1}`, balance: 800000 + Math.random() * 60000 }))
+    : Array.from({ length: 60 }, (_, i) => ({ date: `Day ${i+1}`, balance: 800000 + Math.random() * 70000 }))
 
-  // Day of week analysis
-  const dayPnL: Record<string, number[]> = { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: [] }
-  trades.forEach((t) => {
-    const day = new Date(t.closeTime).toLocaleDateString("en-US", { weekday: "short" })
-    if (dayPnL[day]) dayPnL[day].push(t.profit)
-  })
-  const dayStats = Object.entries(dayPnL).map(([day, vals]) => ({
-    day,
-    avg: vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0,
-    count: vals.length,
-  }))
+  // Monthly P&L mock data
+  const monthlyProfitData = [
+    { month: "Oct", profit: 5.2 },
+    { month: "Nov", profit: 8.1 },
+    { month: "Dec", profit: -2.3 },
+    { month: "Jan", profit: 11.4 },
+    { month: "Feb", profit: 7.5 },
+    { month: "Mar", profit: 4.2 },
+  ]
 
-  // Symbol performance
-  const symbolPnL: Record<string, number> = {}
-  trades.forEach((t) => {
-    symbolPnL[t.symbol] = (symbolPnL[t.symbol] || 0) + t.profit
-  })
-  const symbolStats = Object.entries(symbolPnL)
-    .map(([symbol, pnl]) => ({ symbol, pnl }))
-    .sort((a, b) => b.pnl - a.pnl)
-    .slice(0, 7)
+  // Symbol performance mock
+  const symbolStats = [
+    { symbol: "XAUUSD", pnl: 45000 },
+    { symbol: "EURUSD", pnl: 28000 },
+    { symbol: "NAS100", pnl: 15000 },
+    { symbol: "US30", pnl: -5000 },
+    { symbol: "BTCUSD", pnl: 8500 },
+  ]
+
+  if (loading) {
+    return (
+      <DashboardShell title="Statistics" subtitle="Analyse your trading performance in depth">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading your statistics...</p>
+          </div>
+        </div>
+      </DashboardShell>
+    )
+  }
 
   return (
     <DashboardShell title="Statistics" subtitle="Analyse your trading performance in depth">
@@ -89,7 +102,7 @@ export default function StatisticsPage() {
             >
               All Accounts
             </button>
-            {mockAccounts.filter(a => a.status !== "failed").map((a) => (
+            {activeAccounts.map((a) => (
               <button
                 key={a.id}
                 onClick={() => setSelectedAccount(a.id)}
@@ -115,10 +128,10 @@ export default function StatisticsPage() {
         {/* Key Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Win Rate", value: `${winRate}%`, icon: Percent, color: "text-[#4ade80]", bg: "bg-[rgba(74,222,128,0.08)]", trend: "up" as const },
-            { label: "Total P&L", value: formatCurrency(Math.abs(totalPnL), "NGN"), icon: TrendingUp, color: totalPnL >= 0 ? "text-[#4ade80]" : "text-[#f87171]", bg: totalPnL >= 0 ? "bg-[rgba(74,222,128,0.08)]" : "bg-[rgba(248,113,113,0.08)]", trend: totalPnL >= 0 ? "up" as const : "down" as const },
-            { label: "Profit Factor", value: profitFactor, icon: BarChart3, color: "text-[#a7ffeb]", bg: "bg-[rgba(167,255,235,0.08)]", trend: "up" as const },
-            { label: "Total Trades", value: String(trades.length), icon: Activity, color: "text-[#ffd166]", bg: "bg-[rgba(255,209,102,0.08)]", trend: "neutral" as const },
+            { label: "Win Rate", value: `${winRatePct.toFixed(1)}%`, icon: Percent, color: "text-[#4ade80]", bg: "bg-[rgba(74,222,128,0.08)]", trend: "up" as const },
+            { label: "Total P&L", value: formatCurrency(Math.abs(totalProfit), "NGN"), icon: TrendingUp, color: totalProfit >= 0 ? "text-[#4ade80]" : "text-[#f87171]", bg: totalProfit >= 0 ? "bg-[rgba(74,222,128,0.08)]" : "bg-[rgba(248,113,113,0.08)]", trend: totalProfit >= 0 ? "up" as const : "down" as const },
+            { label: "Avg Profit", value: `${avgProfit.toFixed(2)}%`, icon: BarChart3, color: "text-[#a7ffeb]", bg: "bg-[rgba(167,255,235,0.08)]", trend: "up" as const },
+            { label: "Active Accounts", value: String(activeAccounts.length), icon: Activity, color: "text-[#ffd166]", bg: "bg-[rgba(255,209,102,0.08)]", trend: "neutral" as const },
           ].map((s) => (
             <div key={s.label} className="glass-card p-4 stat-card">
               <div className="flex items-center justify-between mb-3">
@@ -168,8 +181,8 @@ export default function StatisticsPage() {
               <PieChart>
                 <Pie
                   data={[
-                    { name: "Wins", value: winTrades.length, fill: "#4ade80" },
-                    { name: "Losses", value: lossTrades.length, fill: "#f87171" },
+                    { name: "Wins", value: winRate, fill: "#4ade80" },
+                    { name: "Losses", value: Math.max(0, activeAccounts.length - winRate), fill: "#f87171" },
                   ]}
                   cx="50%" cy="50%" innerRadius={45} outerRadius={65} paddingAngle={4} dataKey="value"
                 >
@@ -181,11 +194,11 @@ export default function StatisticsPage() {
             </ResponsiveContainer>
             <div className="flex justify-center gap-6 mt-2">
               <div className="text-center">
-                <p className="text-lg font-bold text-[#4ade80]">{winTrades.length}</p>
+                <p className="text-lg font-bold text-[#4ade80]">{winRate}</p>
                 <p className="text-xs text-muted-foreground">Wins</p>
               </div>
               <div className="text-center">
-                <p className="text-lg font-bold text-[#f87171]">{lossTrades.length}</p>
+                <p className="text-lg font-bold text-[#f87171]">{Math.max(0, activeAccounts.length - winRate)}</p>
                 <p className="text-xs text-muted-foreground">Losses</p>
               </div>
             </div>
@@ -205,7 +218,7 @@ export default function StatisticsPage() {
                 <YAxis tick={{ fontSize: 10, fill: "#7ab8ac" }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
                 <Tooltip contentStyle={{ background: "rgba(7,18,17,0.9)", border: "1px solid rgba(94,234,212,0.18)", borderRadius: "8px", fontSize: "12px", backdropFilter: "blur(16px)" }} formatter={(v: number) => [`${v}%`, "P&L"]} />
                 <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                  {monthlyProfitData.map((entry, i) => (
+                  {monthlyProfitData.map((entry: any, i: number) => (
                     <Cell key={i} fill={entry.profit >= 0 ? "#0d9488" : "#b91c1c"} />
                   ))}
                 </Bar>
@@ -224,7 +237,7 @@ export default function StatisticsPage() {
                 <YAxis type="category" dataKey="symbol" tick={{ fontSize: 10, fill: "#7ab8ac" }} tickLine={false} axisLine={false} width={55} />
                 <Tooltip contentStyle={{ background: "rgba(7,18,17,0.9)", border: "1px solid rgba(94,234,212,0.18)", borderRadius: "8px", fontSize: "12px", backdropFilter: "blur(16px)" }} />
                 <Bar dataKey="pnl" radius={[0, 4, 4, 0]}>
-                  {symbolStats.map((s, i) => (
+                  {symbolStats.map((s: any, i: number) => (
                     <Cell key={i} fill={s.pnl >= 0 ? "#0d9488" : "#b91c1c"} />
                   ))}
                 </Bar>
@@ -233,42 +246,19 @@ export default function StatisticsPage() {
           </div>
         </div>
 
-        {/* Day of week analysis */}
-        <div className="glass-card p-5">
-          <h3 className="font-semibold text-foreground mb-1">Day of Week Performance</h3>
-          <p className="text-xs text-muted-foreground mb-4">Average P&L per trading day of the week</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={dayStats} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(167,255,235,0.06)" />
-              <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#7ab8ac" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#7ab8ac" }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "rgba(7,18,17,0.9)", border: "1px solid rgba(94,234,212,0.18)", borderRadius: "8px", fontSize: "12px", backdropFilter: "blur(16px)" }} formatter={(v: number) => [`₦${v.toFixed(0)}`, "Avg P&L"]} />
-              <Bar dataKey="avg" radius={[4, 4, 0, 0]}>
-                {dayStats.map((d, i) => (
-                  <Cell key={i} fill={d.avg >= 0 ? "#a7ffeb" : "#f87171"} opacity={0.8} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
         {/* Detailed stats table */}
         <div className="glass-card p-5">
           <h3 className="font-semibold text-foreground mb-4">Performance Summary</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
             {[
-              { label: "Total Trades", value: trades.length },
-              { label: "Winning Trades", value: winTrades.length, color: "text-[#4ade80]" },
-              { label: "Losing Trades", value: lossTrades.length, color: "text-[#f87171]" },
-              { label: "Win Rate", value: `${winRate}%`, color: "text-[#4ade80]" },
-              { label: "Avg Win", value: formatCurrency(avgWin, "NGN"), color: "text-[#4ade80]" },
-              { label: "Avg Loss", value: formatCurrency(avgLoss, "NGN"), color: "text-[#f87171]" },
-              { label: "Profit Factor", value: profitFactor },
-              { label: "Total P&L", value: formatCurrency(Math.abs(totalPnL), "NGN"), color: totalPnL >= 0 ? "text-[#4ade80]" : "text-[#f87171]" },
-              { label: "Biggest Win", value: formatCurrency(Math.max(...trades.map(t => t.profit), 0), "NGN"), color: "text-[#4ade80]" },
-              { label: "Biggest Loss", value: formatCurrency(Math.abs(Math.min(...trades.map(t => t.profit), 0)), "NGN"), color: "text-[#f87171]" },
-              { label: "Avg Trade Duration", value: "3h 42m" },
-              { label: "Most Traded", value: "XAUUSD" },
+              { label: "Active Accounts", value: activeAccounts.length },
+              { label: "Naira Accounts", value: nairaAccounts.length, color: "text-[#fbbf24]" },
+              { label: "Dollar Accounts", value: dollarAccounts.length, color: "text-[#5eead4]" },
+              { label: "Win Rate", value: `${winRatePct.toFixed(1)}%`, color: "text-[#4ade80]" },
+              { label: "Total P&L", value: formatCurrency(Math.abs(totalProfit), "NGN"), color: totalProfit >= 0 ? "text-[#4ade80]" : "text-[#f87171]" },
+              { label: "Avg Profit/Account", value: `${avgProfit.toFixed(2)}%`, color: "text-[#a7ffeb]" },
+              { label: "Best Performer", value: activeAccounts.length > 0 ? `${Math.max(...activeAccounts.map(a => a.currentProfit)).toFixed(2)}%` : "N/A", color: "text-[#4ade80]" },
+              { label: "Worst Performer", value: activeAccounts.length > 0 ? `${Math.min(...activeAccounts.map(a => a.currentProfit)).toFixed(2)}%` : "N/A", color: "text-[#f87171]" },
             ].map((s) => (
               <div key={s.label} className="border-b border-[rgba(167,255,235,0.06)] pb-3">
                 <p className="text-xs text-muted-foreground">{s.label}</p>

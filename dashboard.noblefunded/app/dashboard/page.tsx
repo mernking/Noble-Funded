@@ -2,7 +2,7 @@
 
 import { DashboardShell } from "@/components/dashboard/shell"
 import { OverviewContent } from "@/components/dashboard/overview-content"
-import { mockUser } from "@/lib/data"
+import { auth } from "@/lib/api"
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -12,10 +12,13 @@ function getGreeting() {
 }
 
 export default function DashboardPage() {
+  const user = auth.getUser()
+  const greeting = `${getGreeting()}, ${user?.fullName?.split(" ")[0] || "Trader"}`
+  
   return (
     <DashboardShell
       title="Overview"
-      subtitle={`${getGreeting()}, ${mockUser.name.split(" ")[0]}`}
+      subtitle={greeting}
     >
       <OverviewContent />
     </DashboardShell>

@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardShell } from "@/components/dashboard/shell"
-import { mockAccounts, mockUser, mockPayouts, formatCurrency } from "@/lib/data"
+import { formatCurrency } from "@/lib/data"
+import { certificates as certificatesApi } from "@/lib/api"
 import {
   Award,
   Download,
@@ -12,6 +13,7 @@ import {
   Shield,
   Star,
   DollarSign,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -30,64 +32,12 @@ interface Certificate {
   phase?: string
 }
 
-// Generate mock certificates from mock data
-const generateCertificates = (): Certificate[] => {
-  const certs: Certificate[] = []
-
-  // Payout certificates — from paid payouts
-  mockPayouts
-    .filter(p => p.status === "paid")
-    .forEach((p, i) => {
-      const acc = mockAccounts.find(a => a.id === p.accountId)
-      certs.push({
-        id: `cert-pay-${i}`,
-        type: "payout",
-        title: "Payout Certificate",
-        accountNumber: acc?.accountNumber || p.accountId,
-        accountType: acc?.type || "naira",
-        currency: p.currency,
-        date: p.paidAt || p.requestedAt,
-        details: `Successfully received ${p.currency === "NGN" ? "₦" : "$"}${p.amount.toLocaleString()} via ${p.method}`,
-        amount: p.amount,
-      })
-    })
-
-  // Pass certificates — from funded/passed accounts
-  mockAccounts
-    .filter(a => a.status === "funded" || a.status === "passed")
-    .forEach((acc, i) => {
-      // Phase 1 pass
-      certs.push({
-        id: `cert-p1-${i}`,
-        type: "pass",
-        title: "Challenge Phase 1 Certificate",
-        accountNumber: acc.accountNumber,
-        accountType: acc.type,
-        currency: acc.currency,
-        date: acc.createdAt,
-        details: `Successfully passed Phase 1 evaluation with ${acc.type === "naira" ? "10%" : "10%"} profit target`,
-        phase: "Phase 1",
-      })
-      // Phase 2 pass (for funded accounts)
-      if (acc.status === "funded") {
-        certs.push({
-          id: `cert-p2-${i}`,
-          type: "pass",
-          title: "Challenge Phase 2 Certificate",
-          accountNumber: acc.accountNumber,
-          accountType: acc.type,
-          currency: acc.currency,
-          date: acc.createdAt,
-          details: `Successfully passed Phase 2 evaluation and received funded account`,
-          phase: "Phase 2",
-        })
-      }
-    })
-
-  return certs
+interface CertificateStats {
+  total: number
+  naira: number
+  dollar: number
+  payouts: number
 }
-
-const allCerts = generateCertificates()
 
 function CertificateCard({ cert }: { cert: Certificate }) {
   const isNaira = cert.accountType === "naira"
@@ -139,7 +89,6 @@ function CertificateCard({ cert }: { cert: Certificate }) {
             isNaira ? "text-[#fbbf24] bg-[rgba(251,191,36,0.08)] hover:bg-[rgba(251,191,36,0.16)] border border-[rgba(251,191,36,0.15)]" : "text-[#5eead4] bg-[rgba(20,184,166,0.08)] hover:bg-[rgba(20,184,166,0.15)] border border-[rgba(94,234,212,0.15)]"
           )}
           onClick={() => {
-            // In production: generate and download PDF
             alert("Certificate download coming soon. This will generate a PDF certificate.")
           }}
         >
@@ -202,15 +151,49 @@ function EmptyState({ type }: { type: "naira" | "dollar" }) {
 export default function CertificatesPage() {
   const [tab, setTab] = useState<"naira" | "dollar">("naira")
   const [typeFilter, setTypeFilter] = useState<"all" | "payout" | "pass">("all")
+  const [loading, setLoading] = useState(true)
+  const [certificates, setCertificates] = useState<Certificate[]>([])
+  const [stats, setStats] = useState<CertificateStats>({ total: 0, naira: 0, dollar: 0, payouts: 0 })
 
-  const filtered = allCerts.filter(c => {
+  useEffect(() => {
+    const fetchCertificates = async () => {
+      try {
+        setLoading(true)
+        const response = await certificatesApi.getAll()
+        const data = response.data || response
+        setCertificates(data.certificates || [])
+        setStats(data.stats || { total: 0, naira: 0, dollar: 0, payouts: 0 })
+      } catch (err) {
+        console.error("Failed to fetch certificates:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchCertificates()
+  }, [])
+
+  const filtered = certificates.filter(c => {
     const typeMatch = c.accountType === tab
     const certMatch = typeFilter === "all" || c.type === typeFilter
     return typeMatch && certMatch
   })
 
-  const nairaCerts = allCerts.filter(c => c.accountType === "naira")
-  const dollarCerts = allCerts.filter(c => c.accountType === "dollar")
+  const nairaCerts = certificates.filter(c => c.accountType === "naira")
+  const dollarCerts = certificates.filter(c => c.accountType === "dollar")
+  const payoutCerts = certificates.filter(c => c.type === "payout")
+
+  if (loading) {
+    return (
+      <DashboardShell title="Certificates" subtitle="Your trading achievement certificates and payout records">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading certificates...</p>
+          </div>
+        </div>
+      </DashboardShell>
+    )
+  }
 
   return (
     <DashboardShell title="Certificates" subtitle="Your trading achievement certificates and payout records">
@@ -247,10 +230,10 @@ export default function CertificatesPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total Certificates", value: allCerts.length, icon: Award, color: "text-foreground" },
-            { label: "Payout Certificates", value: allCerts.filter(c => c.type === "payout").length, icon: DollarSign, color: "text-[#4ade80]" },
-            { label: "Pass Certificates", value: allCerts.filter(c => c.type === "pass").length, icon: CheckCircle2, color: "text-[#5eead4]" },
-            { label: "Verified", value: allCerts.length, icon: Shield, color: "text-[#fbbf24]" },
+            { label: "Total Certificates", value: stats.total, icon: Award, color: "text-foreground" },
+            { label: "Payout Certificates", value: payoutCerts.length, icon: DollarSign, color: "text-[#4ade80]" },
+            { label: "Pass Certificates", value: stats.total - payoutCerts.length, icon: CheckCircle2, color: "text-[#5eead4]" },
+            { label: "Verified", value: stats.total, icon: Shield, color: "text-[#fbbf24]" },
           ].map((s) => (
             <div key={s.label} className="glass-card p-4">
               <div className="p-2 rounded-lg w-fit mb-3" style={{ background: "rgba(13,148,136,0.12)", border: "1px solid rgba(94,234,212,0.12)" }}>

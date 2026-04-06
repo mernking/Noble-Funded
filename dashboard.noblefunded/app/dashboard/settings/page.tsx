@@ -1,13 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardShell } from "@/components/dashboard/shell"
-import { mockUser } from "@/lib/data"
+import {
+  UserProfile,
+} from "@/lib/data"
+import { users } from "@/lib/api"
 import {
   User,
   Mail,
   Phone,
-  MapPin,
+  Globe,
   Shield,
   Bell,
   Lock,
@@ -17,12 +20,11 @@ import {
   AlertTriangle,
   ChevronRight,
   Upload,
-  ExternalLink,
   Smartphone,
   CreditCard,
-  Globe,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Loader2 } from "lucide-react"
 
 type SettingsTab = "profile" | "security" | "notifications" | "kyc" | "paymentmethods"
 
@@ -38,12 +40,26 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
   const [showPassword, setShowPassword] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const [user, setUser] = useState<UserProfile | null>(null)
+  
   const [profileForm, setProfileForm] = useState({
-    name: mockUser.name,
-    email: mockUser.email,
-    phone: mockUser.phone,
-    country: mockUser.country,
+    name: "",
+    email: "",
+    phone: "",
+    country: "",
   })
+  
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
+  
   const [notifSettings, setNotifSettings] = useState({
     payoutUpdates: true,
     challengeProgress: true,
@@ -52,15 +68,96 @@ export default function SettingsPage() {
     smsAlerts: true,
     weeklyReport: true,
   })
+  
   const [twoFaEnabled, setTwoFaEnabled] = useState(false)
   const [savedMethods] = useState([
     { id: "bm1", type: "bank", name: "GTBank", accountNumber: "012••••••89", accountName: "Adebayo Ogundimu", primary: true },
     { id: "bm2", type: "bank", name: "Opay", accountNumber: "901••••••45", accountName: "Adebayo Ogundimu", primary: false },
   ])
 
+  // Fetch user profile on mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true)
+        const response = await users.getMe()
+        const userData = response.data || response
+        setUser(userData)
+        setProfileForm({
+          name: userData.fullName || "",
+          email: userData.email || "",
+          phone: userData.phone || "",
+          country: userData.country || "Nigeria",
+        })
+      } catch (err: any) {
+        console.error("Failed to fetch profile:", err)
+        setError(err.message || "Failed to load profile")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [])
+
+  const handleSaveProfile = async () => {
+    try {
+      setSavingProfile(true)
+      await users.updateMe({
+        fullName: profileForm.name,
+        phone: profileForm.phone,
+        country: profileForm.country,
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (err: any) {
+      console.error("Failed to save profile:", err)
+      alert(err.message || "Failed to save profile")
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert("Passwords do not match")
+      return
+    }
+    if (passwordForm.newPassword.length < 8) {
+      alert("Password must be at least 8 characters")
+      return
+    }
+    try {
+      setSavingPassword(true)
+      await users.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      })
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
+      alert("Password changed successfully!")
+    } catch (err: any) {
+      console.error("Failed to change password:", err)
+      alert(err.message || "Failed to change password")
+    } finally {
+      setSavingPassword(false)
+    }
+  }
+
   const handleSave = () => {
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
+  }
+
+  if (loading) {
+    return (
+      <DashboardShell title="Settings" subtitle="Manage your account preferences and security">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading settings...</p>
+          </div>
+        </div>
+      </DashboardShell>
+    )
   }
 
   return (
@@ -102,11 +199,11 @@ export default function SettingsPage() {
                 {/* Avatar */}
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full flex items-center justify-center font-black text-xl shrink-0" style={{ background: "rgba(13,148,136,0.25)", color: "#5eead4", border: "2px solid rgba(94,234,212,0.2)" }}>
-                    {mockUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                    {profileForm.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{mockUser.name}</p>
-                    <p className="text-xs text-muted-foreground mb-2">Member since {new Date(mockUser.joinedAt).toLocaleDateString("en-NG", { month: "long", year: "numeric" })}</p>
+                    <p className="text-sm font-semibold text-foreground">{profileForm.name}</p>
+                    <p className="text-xs text-muted-foreground mb-2">Member since {user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString("en-NG", { month: "long", year: "numeric" }) : "N/A"}</p>
                     <button className="flex items-center gap-1.5 text-xs text-[#5eead4] px-3 py-1.5 rounded-lg transition-colors" style={{ background: "rgba(13,148,136,0.1)", border: "1px solid rgba(94,234,212,0.15)" }}>
                       <Upload size={12} />
                       Upload Photo
@@ -133,9 +230,9 @@ export default function SettingsPage() {
                       <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       <input
                         value={profileForm.email}
-                        onChange={(e) => setProfileForm((f) => ({ ...f, email: e.target.value }))}
                         type="email"
-                        className="w-full bg-[rgba(167,255,235,0.05)] border border-[rgba(167,255,235,0.12)] rounded-xl pl-9 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[rgba(167,255,235,0.4)] transition-colors"
+                        readOnly
+                        className="w-full bg-[rgba(167,255,235,0.05)] border border-[rgba(167,255,235,0.12)] rounded-xl pl-9 pr-4 py-3 text-sm text-muted-foreground cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -176,10 +273,15 @@ export default function SettingsPage() {
                       Changes saved!
                     </span>
                   )}
+                  {error && (
+                    <span className="text-sm text-[#f87171]">{error}</span>
+                  )}
                   <button
-                    onClick={handleSave}
-                    className="ml-auto px-6 py-2.5 rounded-xl text-sm font-semibold text-[#001e28] bg-[#a7ffeb] hover:bg-[#7bf5d5] transition-all"
+                    onClick={handleSaveProfile}
+                    disabled={savingProfile}
+                    className="ml-auto px-6 py-2.5 rounded-xl text-sm font-semibold text-[#001e28] bg-[#a7ffeb] hover:bg-[#7bf5d5] transition-all disabled:opacity-50 flex items-center gap-2"
                   >
+                    {savingProfile && <Loader2 size={14} className="animate-spin" />}
                     Save Changes
                   </button>
                 </div>
@@ -196,30 +298,57 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Use a strong, unique password for your account.</p>
                   </div>
                   <div className="space-y-3 max-w-md">
-                    {[
-                      { label: "Current Password", placeholder: "Enter current password" },
-                      { label: "New Password", placeholder: "At least 8 characters" },
-                      { label: "Confirm New Password", placeholder: "Re-enter new password" },
-                    ].map((f) => (
-                      <div key={f.label}>
-                        <label className="text-xs text-muted-foreground block mb-1.5 font-medium">{f.label}</label>
-                        <div className="relative">
-                          <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                          <input
-                            type={showPassword ? "text" : "password"}
-                            placeholder={f.placeholder}
-                            className="w-full bg-[rgba(167,255,235,0.05)] border border-[rgba(167,255,235,0.12)] rounded-xl pl-9 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[rgba(167,255,235,0.4)] transition-colors"
-                          />
-                          <button
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          >
-                            {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1.5 font-medium">Current Password</label>
+                      <div className="relative">
+                        <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={passwordForm.currentPassword}
+                          onChange={(e) => setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))}
+                          placeholder="Enter current password"
+                          className="w-full bg-[rgba(167,255,235,0.05)] border border-[rgba(167,255,235,0.12)] rounded-xl pl-9 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[rgba(167,255,235,0.4)] transition-colors"
+                        />
+                        <button
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
                       </div>
-                    ))}
-                    <button className="px-6 py-2.5 rounded-xl text-sm font-semibold text-[#001e28] bg-[#a7ffeb] hover:bg-[#7bf5d5] transition-all">
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1.5 font-medium">New Password</label>
+                      <div className="relative">
+                        <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={passwordForm.newPassword}
+                          onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))}
+                          placeholder="At least 8 characters"
+                          className="w-full bg-[rgba(167,255,235,0.05)] border border-[rgba(167,255,235,0.12)] rounded-xl pl-9 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[rgba(167,255,235,0.4)] transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1.5 font-medium">Confirm New Password</label>
+                      <div className="relative">
+                        <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                          placeholder="Re-enter new password"
+                          className="w-full bg-[rgba(167,255,235,0.05)] border border-[rgba(167,255,235,0.12)] rounded-xl pl-9 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[rgba(167,255,235,0.4)] transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleChangePassword}
+                      disabled={savingPassword || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}
+                      className="px-6 py-2.5 rounded-xl text-sm font-semibold text-[#001e28] bg-[#a7ffeb] hover:bg-[#7bf5d5] transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {savingPassword && <Loader2 size={14} className="animate-spin" />}
                       Update Password
                     </button>
                   </div>

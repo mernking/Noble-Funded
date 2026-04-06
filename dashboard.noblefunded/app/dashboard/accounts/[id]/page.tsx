@@ -4,12 +4,11 @@ import { useParams } from "next/navigation"
 import Link from "next/link"
 import { DashboardShell } from "@/components/dashboard/shell"
 import {
-  mockAccounts,
   formatCurrency,
   getStatusLabel,
   getStatusClass,
-  generateEquityCurve,
 } from "@/lib/data"
+import { challenges } from "@/lib/api"
 import {
   AreaChart,
   Area,

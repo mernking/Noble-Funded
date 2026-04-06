@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardShell } from "@/components/dashboard/shell"
 import {
-  mockPayouts,
-  mockAccounts,
   formatCurrency,
+  TradingAccount,
+  PayoutRequest,
 } from "@/lib/data"
+import { api } from "@/lib/api"
 import {
   CheckCircle2,
   Clock,
@@ -16,10 +17,9 @@ import {
   Banknote,
   Copy,
   ChevronDown,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const fundedAccounts = mockAccounts.filter((a) => a.status === "funded")
 
 function PayoutStatus({ status }: { status: string }) {
   const map: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
@@ -39,8 +39,11 @@ function PayoutStatus({ status }: { status: string }) {
 
 export default function PayoutsPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [loading, setLoading] = useState(true)
+  const [accounts, setAccounts] = useState<TradingAccount[]>([])
+  const [payouts, setPayouts] = useState<PayoutRequest[]>([])
   const [form, setForm] = useState({
-    accountId: fundedAccounts[0]?.id || "",
+    accountId: "",
     amount: "",
     method: "",
     bankName: "",
@@ -50,8 +53,35 @@ export default function PayoutsPage() {
     network: "",
   })
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
-  const selectedAccount = mockAccounts.find((a) => a.id === form.accountId)
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [accountsRes, payoutsRes] = await Promise.all([
+          api.get("challenges"),
+          api.get("payouts")
+        ])
+        setAccounts(accountsRes.data || [])
+        setPayouts(payoutsRes.data || [])
+        
+        // Set default account if available
+        const funded = (accountsRes.data || []).filter((a: TradingAccount) => a.status === "funded")
+        if (funded.length > 0) {
+          setForm(f => ({ ...f, accountId: funded[0].id }))
+        }
+      } catch (err) {
+        console.error("Failed to fetch data", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const fundedAccounts = accounts.filter((a) => a.status === "funded")
+  const selectedAccount = accounts.find((a) => a.id === form.accountId)
   const isNaira = selectedAccount?.currency === "NGN"
   // Naira: no minimum. Dollar: $50 minimum
   const minPayout = isNaira ? 0 : 50
@@ -61,14 +91,64 @@ export default function PayoutsPage() {
     ? ["Bank Transfer (GTBank)", "Bank Transfer (Access Bank)", "Bank Transfer (Opay)", "Bank Transfer (Palmpay)", "Bank Transfer (Kuda)"]
     : ["USDT (TRC20)", "USDT (ERC20)", "Bank Transfer (USD)"]
 
-  const handleSubmit = () => {
-    setSubmitted(true)
-    setStep(1)
-    setForm({ accountId: fundedAccounts[0]?.id || "", amount: "", method: "", bankName: "", accountNumber: "", accountName: "", walletAddress: "", network: "" })
+  const handleSubmit = async () => {
+    if (!selectedAccount || !form.amount || !form.method) return
+    
+    setSubmitting(true)
+    try {
+      const payoutData: any = {
+        challengeId: selectedAccount.id,
+        amount: Number(form.amount),
+        payoutMethod: form.method,
+      }
+      
+      if (isNaira) {
+        payoutData.currency = "NGN"
+        payoutData.bankName = form.bankName
+        payoutData.accountNumber = form.accountNumber
+        payoutData.accountName = form.accountName
+      } else {
+        payoutData.currency = "USD"
+        payoutData.usdtAddress = form.walletAddress
+      }
+      
+      await api.post("payouts/request", payoutData)
+      
+      // Refresh payouts
+      const payoutsRes = await api.get("payouts")
+      setPayouts(payoutsRes.data || [])
+      
+      setSubmitted(true)
+      setStep(1)
+      setForm({ 
+        accountId: fundedAccounts[0]?.id || "", 
+        amount: "", 
+        method: "", 
+        bankName: "", 
+        accountNumber: "", 
+        accountName: "", 
+        walletAddress: "", 
+        network: "" 
+      })
+    } catch (err) {
+      console.error("Failed to submit payout", err)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  const totalPaidNaira = mockPayouts.filter(p => p.status === "paid" && p.currency === "NGN").reduce((s, p) => s + p.amount, 0)
-  const totalPaidDollar = mockPayouts.filter(p => p.status === "paid" && p.currency === "USD").reduce((s, p) => s + p.amount, 0)
+  const totalPaidNaira = payouts.filter(p => p.status === "paid" && p.currency === "NGN").reduce((s, p) => s + p.amount, 0)
+  const totalPaidDollar = payouts.filter(p => p.status === "paid" && p.currency === "USD").reduce((s, p) => s + p.amount, 0)
+
+  if (loading) {
+    return (
+      <DashboardShell title="Payouts" subtitle="Request and manage your profit withdrawals">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="w-8 h-8 text-[#5eead4] animate-spin" />
+        </div>
+      </DashboardShell>
+    )
+  }
 
   return (
     <DashboardShell title="Payouts" subtitle="Request and manage your profit withdrawals">
@@ -78,7 +158,7 @@ export default function PayoutsPage() {
           {[
             { label: "Naira Paid Out", value: formatCurrency(totalPaidNaira, "NGN"), color: "text-[#fbbf24]", icon: CheckCircle2 },
             { label: "Dollar Paid Out", value: formatCurrency(totalPaidDollar, "USD"), color: "text-[#4ade80]", icon: CheckCircle2 },
-            { label: "Processing", value: formatCurrency(mockPayouts.filter(p => p.status === "processing").reduce((s, p) => s + p.amount, 0), "NGN"), color: "text-[#fbbf24]", icon: Clock },
+            { label: "Processing", value: formatCurrency(payouts.filter(p => p.status === "processing").reduce((s, p) => s + p.amount, 0), "NGN"), color: "text-[#fbbf24]", icon: Clock },
             { label: "Avg Payout Time", value: "NGN < 24h · USD bi-wk", color: "text-[#a7ffeb]", icon: Clock },
           ].map((s) => (
             <div key={s.label} className="glass-card p-4">
@@ -315,7 +395,7 @@ export default function PayoutsPage() {
               <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(94,234,212,0.1)" }}>
                 <h3 className="font-bold text-foreground">Payout History</h3>
               </div>
-              {mockPayouts.length === 0 ? (
+              {payouts.length === 0 ? (
                 <div className="p-12 text-center">
                   <DollarSign className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground">No payout history yet.</p>
@@ -331,13 +411,13 @@ export default function PayoutsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mockPayouts.map((p) => (
+                      {payouts.map((p) => (
                         <tr key={p.id} className="glass-row transition-colors" style={{ borderBottom: "1px solid rgba(94,234,212,0.05)" }}>
                           <td className="px-4 py-3">
                             <span className="font-mono text-xs text-[#5eead4]">{p.reference || "—"}</span>
                           </td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">
-                            {mockAccounts.find(a => a.id === p.accountId)?.accountNumber || p.accountId}
+                            {accounts.find((a: TradingAccount) => a.id === p.accountId)?.accountNumber || p.accountId}
                           </td>
                           <td className="px-4 py-3 font-bold text-[#4ade80]">{formatCurrency(p.amount, p.currency)}</td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">{p.method}</td>

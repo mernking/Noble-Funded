@@ -134,7 +134,7 @@ function ProgressBar({ pct, danger }: { pct: number; danger?: boolean }) {
   )
 }
 
-function AccountCard({ account }: { account: typeof mockAccounts[0] }) {
+function AccountCard({ account }: { account: TradingAccount }) {
   const isFailed = account.status === "failed"
   const isFunded = account.status === "funded"
   const isNaira = account.currency === "NGN"
@@ -230,12 +230,18 @@ export function OverviewContent() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [accountsRes, userData] = await Promise.all([
+        const [accountsRes, payoutsRes, userData] = await Promise.all([
           api.get("challenges"),
+          api.get("payouts"),
           auth.getUser()
         ])
         setAccounts(accountsRes.data || [])
         setUser(userData)
+        
+        // Calculate total payouts from API
+        const payouts = payoutsRes.data || []
+        const paidPayouts = payouts.filter((p: any) => p.status === "paid")
+        setTotalPayoutsFromApi(paidPayouts.reduce((sum: number, p: any) => sum + (p.currency === "NGN" ? p.amount : p.amount * getExchangeRate()), 0))
       } catch (err) {
         console.error("Failed to fetch dashboard data", err)
       } finally {
@@ -244,6 +250,14 @@ export function OverviewContent() {
     }
     fetchData()
   }, [])
+  
+  // Helper to get exchange rate (simplified)
+  const getExchangeRate = () => {
+    // Use a fixed rate for now - in production this would come from API
+    return 1500 // NGN to USD rate
+  }
+  
+  const [totalPayoutsFromApi, setTotalPayoutsFromApi] = useState(0)
 
   if (loading) {
     return (

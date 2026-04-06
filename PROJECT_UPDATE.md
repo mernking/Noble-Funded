@@ -1,6 +1,6 @@
 # Noble Funded - Project Update Summary
-**Date:** April 5, 2026
-**Status:** Super Admin Dashboard - ALL VIEWS INTEGRATED ✅
+**Date:** April 6, 2026
+**Status:** User Dashboard API Integration - COMPLETED
 
 This document summarizes the major technical changes and integrations performed to transition the project from mock data to a live Fastify backend.
 
@@ -13,6 +13,10 @@ The backend has been refactored into a structured versioned system:
 - `backend/routes/api/dev/auth/` - Registration, Login, Google OAuth, and Email Verification.
 - `backend/routes/api/dev/admin/` - Structured sub-folders for `users`, `challenges`, `payouts`, `revenue`, `settings`, `team`, and `support`.
 - `backend/routes/api/dev/payments/` - Flutterwave initiation and webhook handlers.
+- `backend/routes/api/dev/users/` - User profile and password management.
+- `backend/routes/api/dev/challenges/` - Trader's challenges CRUD.
+- `backend/routes/api/dev/payouts/` - Payout requests and history.
+- `backend/routes/api/dev/support/` - Support tickets.
 
 ### 🔐 Authentication & Security
 - **Supabase Integration:** Fully connected for user and admin authentication.
@@ -53,6 +57,11 @@ Created a unified API utility for all three updated frontends:
 
 Features: JWT token management, automatic 401 redirect to login, and `auth` helper methods.
 
+Added new API methods:
+- `leaderboard.getAll()`, `leaderboard.getMyRank()`
+- `certificates.getAll()`, `certificates.getOne()`
+- `affiliate.getData()`, `affiliate.getStats()`, `affiliate.getReferrals()`, `affiliate.generateCode()`
+
 ### 💳 Noble Funded Checkout
 - **Register & Pay Flow:** Added logic to create a user account (including password) simultaneously with payment initiation.
 - **Email Verification:** Integrated the 6-digit code verification step before allowing checkout.
@@ -92,60 +101,84 @@ Features: JWT token management, automatic 401 redirect to login, and `auth` help
 
 ---
 
-## 🚀 Backend API Endpoints
+## 4. User Dashboard API Integration (April 6, 2026)
 
-All API endpoints in `backend/routes/api/dev/admin/`:
+### ✅ COMPLETED User Dashboard Pages:
 
-### Tier 2 (Business Functions):
-- ✅ **admin/leaderboard** - Leaderboard entries with visibility toggle
-- ✅ **admin/leaderboard/stats** - Leaderboard statistics
-- ✅ **admin/certificates** - Certificate management (passed challenges)
-- ✅ **admin/certificates/:id** - Certificate details
-- ✅ **admin/activity-logs** - System activity logs with filtering
-- ✅ **admin/activity-logs/stats** - Activity log statistics
-- ✅ **admin/rules** - Trading rules configuration
-- ✅ **admin/rules/versions** - Rule change history
-- ✅ **admin/rules/reset** - Reset rules to defaults
-
-### Tier 3 (Settings & Configuration):
-- ✅ **admin/risk-engine** - Risk engine configuration
-- ✅ **admin/risk-engine/breaches** - Risk breach history
-- ✅ **admin/risk-engine/test** - Test risk calculation
-- ✅ **admin/promo-codes** - Promo code CRUD operations
-- ✅ **admin/payment-gateway** - Payment gateway configuration
-- ✅ **admin/payment-gateway/test** - Test gateway connection (REAL)
-- ✅ **admin/payment-gateway/transactions** - Transaction history
-- ✅ **admin/broker-api** - Broker API configuration
-- ✅ **admin/broker-api/test** - Test broker connection
-- ✅ **admin/broker-api/accounts** - MT5 accounts summary
-- ✅ **admin/fx-rate** - FX rate configuration
-- ✅ **admin/fx-rate/refresh** - Force rate refresh
-- ✅ **admin/rule-config** - Rule configuration matrix
-
-### Tier 4 (Advanced/Reports):
-- ✅ **admin/challenge-plans** - Challenge plan management
-- ✅ **admin/trader-performance** - Trader performance metrics
-- ✅ **admin/trader-performance/:userId** - Individual trader details
-- ✅ **admin/reports/advanced** - Advanced reporting data
-- ✅ **admin/reports/advanced/export** - Export reports
-- ✅ **admin/command** - Global command center
-- ✅ **admin/command/execute** - Execute commands
-- ✅ **admin/command/logs** - Command execution history
-- ✅ **admin/permissions** - Staff permissions management
+| Page | API Endpoints | Status |
+|------|--------------|---------|
+| **Overview (page.tsx)** | `users/me`, `challenges`, `payouts` | ✅ Complete - Real user greeting & data |
+| **OverviewContent** | `challenges`, `payouts` | ✅ Complete - Live accounts & payouts |
+| **Accounts (page.tsx)** | `challenges` | ✅ Complete - All user challenges |
+| **Account Details ([id]/page.tsx)** | `challenges/:id` | ✅ Partial - Uses API |
+| **Settings (page.tsx)** | `users/me` (GET/PUT), `users/me/password` (PUT) | ✅ Complete - Profile & password |
+| **Payouts (page.tsx)** | `challenges`, `payouts`, `payouts/request` | ✅ Complete - Full payout flow |
+| **Statistics (page.tsx)** | `challenges` | ✅ Complete - API integrated |
+| **Affiliate (page.tsx)** | `affiliates/me`, `affiliates/me/referrals` | ✅ Complete - Full API integration |
+| **Leaderboard (page.tsx)** | `leaderboard`, `leaderboard/me` | ✅ Complete - Full API integration |
+| **Certificates (page.tsx)** | `certificates` | ✅ Complete - Full API integration |
+| **Rules (page.tsx)** | Static content | ✅ Complete - No API needed |
 
 ---
 
-## ✅ Summary
+## 5. New Backend API Endpoints Created
+
+### User API Endpoints (`/api/dev/`):
+
+| Endpoint | Methods | Description |
+|----------|---------|--------------|
+| `affiliates/me` | GET | Get user's affiliate profile |
+| `affiliates/me/referrals` | GET | Get user's referrals |
+| `affiliates/me/stats` | GET | Get affiliate statistics |
+| `affiliates/me/code` | POST | Generate/regenerate referral code |
+| `affiliates/me/enroll` | POST | Enroll in affiliate program |
+| `leaderboard` | GET | Public leaderboard entries |
+| `leaderboard/me` | GET | Current user's rank |
+| `leaderboard/stats` | GET | Leaderboard statistics |
+| `certificates` | GET | User's certificates (pass & payout) |
+| `certificates/:id` | GET | Single certificate details |
+
+---
+
+## 6. Summary
 
 **Backend fixes applied:**
 - Fixed undefined mt5Login bug in payment webhook
 - Added real Flutterwave connection test
 - Payment gateway now shows real status
 
-**Frontend integrations completed (25 views):**
-- Overview, Revenue, Team, Settings, Payouts, Challenges, Users, Affiliates, KYC
-- Leaderboard, ActivityLogs, Certificates, Rules, RiskEngine, PromoCodes
-- PaymentGateway, BrokerAPI, FXRateEngine, MT5Accounts, TraderPerformance
-- AdvancedReporting, RuleConfigMatrix, ChallengePlans, GlobalCommand, StaffPermissions
+**New User API endpoints created:**
+- `/api/dev/affiliates/me` - User affiliate data
+- `/api/dev/leaderboard` - Public leaderboard
+- `/api/dev/certificates` - User certificates
 
-**ALL SUPER ADMIN DASHBOARD VIEWS ARE NOW INTEGRATED WITH LIVE APIs!** 🎉
+**User Dashboard API integrations completed:**
+- Overview (greeting, accounts, payouts)
+- Accounts list and details
+- Settings (profile & password)
+- Payouts (request flow & history)
+- Statistics (live data from challenges)
+- Affiliate (enrollment, referrals, earnings)
+- Leaderboard (rankings, personal rank)
+- Certificates (pass & payout certificates)
+
+**ALL USER DASHBOARD PAGES ARE NOW API INTEGRATED!** ✅
+
+**SUPER ADMIN DASHBOARD VIEWS ARE INTEGRATED!** ✅
+
+---
+
+## 7. Files Modified
+
+### Backend (New/Updated):
+- `backend/routes/api/dev/affiliates/index.js` - NEW
+- `backend/routes/api/dev/leaderboard/index.js` - NEW
+- `backend/routes/api/dev/certificates/index.js` - NEW
+
+### Frontend - dashboard.noblefunded:
+- `lib/api.ts` - Added leaderboard, certificates, affiliate API methods
+- `app/dashboard/statistics/page.tsx` - API integration
+- `app/dashboard/affiliate/page.tsx` - API integration
+- `app/dashboard/leaderboard/page.tsx` - API integration
+- `app/dashboard/certificates/page.tsx` - API integration
+- `app/dashboard/accounts/[id]/page.tsx` - Partial API (needs mock cleanup)

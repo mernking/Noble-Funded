@@ -168,4 +168,158 @@ export const auth = {
   },
 };
 
+// ============================================
+// USER / PROFILE API METHODS
+// ============================================
+export const users = {
+  // Get current user profile
+  async getMe() {
+    return api.get("users/me");
+  },
+
+  // Update user profile
+  async updateMe({ fullName, phone, country }: { fullName?: string; phone?: string; country?: string }) {
+    return api.put("users/me", { fullName, phone, country });
+  },
+
+  // Change password
+  async changePassword({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) {
+    return api.put("users/me/password", { currentPassword, newPassword });
+  },
+};
+
+// ============================================
+// CHALLENGES API METHODS
+// ============================================
+export const challenges = {
+  // Get all challenges for current user
+  async getAll() {
+    return api.get("challenges");
+  },
+
+  // Get single challenge
+  async getOne(id: string) {
+    return api.get(`challenges/${id}`);
+  },
+
+  // Get challenge stats
+  async getStats(id: string) {
+    return api.get(`challenges/${id}/stats`);
+  },
+
+  // Get challenge config (pricing)
+  async getConfig() {
+    return api.get("challenges/config");
+  },
+};
+
+// ============================================
+// PAYOUTS API METHODS
+// ============================================
+export const payouts = {
+  // Get all payouts
+  async getAll() {
+    return api.get("payouts");
+  },
+
+  // Get single payout
+  async getOne(id: string) {
+    return api.get(`payouts/${id}`);
+  },
+
+  // Request payout
+  async request(data: {
+    challengeId: string;
+    amount: number;
+    currency: string;
+    payoutMethod: string;
+    bankName?: string;
+    accountNumber?: string;
+    accountName?: string;
+    usdtAddress?: string;
+  }) {
+    return api.post("payouts/request", data);
+  },
+};
+
+// ============================================
+// SUPPORT API METHODS
+// ============================================
+export const support = {
+  // Get all tickets
+  async getTickets() {
+    return api.get("support/tickets");
+  },
+
+  // Get single ticket
+  async getTicket(id: string) {
+    return api.get(`support/tickets/${id}`);
+  },
+
+  // Create ticket
+  async createTicket({ subject, message }: { subject: string; message: string }) {
+    return api.post("support/tickets", { subject, message });
+  },
+
+  // Reply to ticket
+  async replyTicket(id: string, { message }: { message: string }) {
+    return api.post(`support/tickets/${id}/reply`, { message });
+  },
+};
+
+// ============================================
+// LEADERBOARD API METHODS
+// ============================================
+export const leaderboard = {
+  // Get user leaderboard
+  async getAll(period: string = "monthly") {
+    return api.get(`leaderboard?period=${period}`);
+  },
+
+  // Get user's own rank
+  async getMyRank() {
+    return api.get("leaderboard/me");
+  },
+};
+
+// ============================================
+// CERTIFICATES API METHODS
+// ============================================
+export const certificates = {
+  // Get user's certificates
+  async getAll() {
+    return api.get("certificates");
+  },
+
+  // Get single certificate
+  async getOne(id: string) {
+    return api.get(`certificates/${id}`);
+  },
+};
+
+// ============================================
+// AFFILIATE API METHODS
+// ============================================
+export const affiliate = {
+  // Get affiliate data
+  async getData() {
+    return api.get("affiliates/me");
+  },
+
+  // Get referral stats
+  async getStats() {
+    return api.get("affiliates/me/stats");
+  },
+
+  // Get referrals list
+  async getReferrals() {
+    return api.get("affiliates/me/referrals");
+  },
+
+  // Generate new referral code
+  async generateCode() {
+    return api.post("affiliates/me/code");
+  },
+};
+
 export default api;
